@@ -83,8 +83,24 @@ def _format_section_html(sec: DigestSection) -> str:
     return "\n".join(lines).strip()
 
 
+def _build_closing_html(digest: MorningDigest, first_msg_id: int | None = None) -> str:
+    total_items = sum(len(s.items) for s in digest.sections)
+    date_esc = html.escape(digest.date_str)
+    lines = [
+        "<pre>╔════════════════════════════════════╗\n"
+        f"║  🏁 KẾT THÚC BẢN TIN {date_esc}  ║\n"
+        "╚════════════════════════════════════╝</pre>",
+        f"✅ <b>Đã cập nhật xong {total_items} tin tức sáng {date_esc}!</b>",
+        f"📚 <a href=\"https://github.com/solly1402/morning-pulse/blob/main/digests/{date_esc}.md\">Xem lưu trữ đầy đủ trên GitHub</a>",
+        "📌 <i>Mẹo: Bấm vào thanh <b>Tin nhắn đã ghim (Pinned Message)</b> ở góc trên cùng màn hình để nhảy thẳng về đầu bản tin sáng nay mà không cần lướt tìm!</i>",
+        "☕ <i>Chúc bạn một ngày làm việc hiệu quả! Hẹn gặp lại vào 06:30 sáng mai.</i>",
+        "██████████████████████████████",
+    ]
+    return "\n".join(lines)
+
+
 def send_telegram_digest(digest: MorningDigest, bot_token: str, chat_id: str) -> bool:
-    """Gửi bản tin buổi sáng qua Telegram Bot với thẻ trích dẫn <blockquote> trực quan."""
+    """Gửi bản tin buổi sáng qua Telegram Bot, tự động ghim tin mở đầu và gửi vạch kết thúc ngày."""
     if not bot_token:
         logger.info("Bỏ qua Telegram: Chưa cấu hình TELEGRAM_BOT_TOKEN.")
         return False
@@ -100,8 +116,9 @@ def send_telegram_digest(digest: MorningDigest, bot_token: str, chat_id: str) ->
     overview_html = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", overview_html)
 
     header_lines = [
-        f"☀️ <b>MORNING PULSE — {html.escape(digest.date_str)}</b>",
-        "",
+        "<pre>╔════════════════════════════════════╗\n"
+        f"║   ☀️ BẮT ĐẦU BẢN TIN {html.escape(digest.date_str)}   ║\n"
+        "╚════════════════════════════════════╝</pre>",
         "📌 <b>TÂM ĐIỂM SÁNG NAY</b>",
         f"<blockquote>{overview_html}</blockquote>",
     ]
@@ -129,9 +146,15 @@ def send_telegram_digest(digest: MorningDigest, bot_token: str, chat_id: str) ->
             if sub_msg:
                 messages.append(sub_msg)
 
+    # Thêm vạch phân chia kết thúc ngày làm tin nhắn chốt sổ cuối cùng
+    messages.append(_build_closing_html(digest))
+
     api_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    pin_url = f"https://api.telegram.org/bot{bot_token}/pinChatMessage"
     success = True
-    for msg in messages:
+    first_message_id: int | None = None
+
+    for idx, msg in enumerate(messages):
         sent = False
         for attempt in range(3):
             try:
@@ -146,6 +169,8 @@ def send_telegram_digest(digest: MorningDigest, bot_token: str, chat_id: str) ->
                     timeout=35,
                 )
                 resp.raise_for_status()
+                if idx == 0:
+                    first_message_id = resp.json().get("result", {}).get("message_id")
                 sent = True
                 break
             except Exception as exc:
@@ -154,6 +179,22 @@ def send_telegram_digest(digest: MorningDigest, bot_token: str, chat_id: str) ->
         if not sent:
             success = False
 
+    # Tự động Ghim (Pin) tin nhắn đầu tiên của ngày hôm nay để người dùng bấm 1 chạm nhảy lên đầu ngày mới
+    if first_message_id:
+        try:
+            requests.post(
+                pin_url,
+                json={
+                    "chat_id": effective_chat_id,
+                    "message_id": first_message_id,
+                    "disable_notification": True,
+                },
+                timeout=15,
+            )
+            logger.info("📌 Đã tự động ghim (Pin) tin nhắn mở đầu bản tin hôm nay trên Telegram.")
+        except Exception as exc:
+            logger.debug("Không thể ghim tin nhắn Telegram: %s", exc)
+
     if success:
-        logger.info("Đã gửi thành công bản tin qua Telegram (%d tin nhắn).", len(messages))
+        logger.info("Đã gửi thành công bản tin + vạch phân chia cuối ngày qua Telegram (%d tin nhắn).", len(messages))
     return success

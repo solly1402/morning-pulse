@@ -25,7 +25,6 @@ def _format_summary_quote(summary: str) -> str:
     """Định dạng phần tóm tắt thành các dòng trích dẫn (blockquote) có in đậm nhãn để dễ đọc lướt."""
     if not summary:
         return ""
-    # Làm nổi bật các nhãn đầu dòng nếu có
     formatted = re.sub(
         r"(•\s*📌\s*Cốt lõi:|•\s*🔍\s*Chi tiết:|•\s*💡\s*Đáng chú ý:)",
         r"**\1**",
@@ -112,16 +111,53 @@ def _build_section_embeds(sec: DigestSection, date_str: str) -> List[Dict[str, A
 
 
 def _build_overview_embed(digest: MorningDigest) -> Dict[str, Any]:
-    """Tạo thẻ Embed mở đầu (Hero Card) chứa toàn bộ điểm tin tổng quan không sợ giới hạn 2000 ký tự."""
+    """Tạo thẻ Embed mở đầu (Hero Card) đánh dấu điểm bắt đầu của ngày mới."""
     return {
-        "title": f"☀️ MORNING PULSE — BẢN TIN SÁNG {digest.date_str}",
+        "title": f"☀️ BẮT ĐẦU BẢN TIN SÁNG — {digest.date_str}",
         "description": (
             f"{digest.greeting}\n\n"
             f"### 📌 TÂM ĐIỂM SÁNG NAY\n"
             f"{digest.ai_overview}"
         ),
         "color": 0xF59E0B,  # Màu vàng nắng buổi sáng
-        "footer": {"text": f"☕ Morning Pulse Daily Digest • {digest.date_str}"},
+        "footer": {"text": f"🌅 Điểm bắt đầu bản tin ngày {digest.date_str}"},
+    }
+
+
+def _build_closing_divider_payload(
+    digest: MorningDigest, jump_url: str | None = None
+) -> Dict[str, Any]:
+    """Tạo vạch phân cách cuối ngày nổi bật kèm nút nhảy lên đầu bản tin để không đọc nhầm sang ngày hôm trước."""
+    total_items = sum(len(s.items) for s in digest.sections)
+    banner_text = (
+        "```\n"
+        "╔══════════════════════════════════════════════════════════╗\n"
+        f"║   🏁 KẾT THÚC BẢN TIN NGÀY {digest.date_str} • HẾT TIN HÔM NAY   ║\n"
+        "╚══════════════════════════════════════════════════════════╝\n"
+        "```"
+    )
+    jump_line = (
+        f"⬆️ ** Điều hướng nhanh:** [**Nhấn vào đây để nhảy thẳng lên đầu bản tin hôm nay ({digest.date_str})**]({jump_url})\n"
+        if jump_url
+        else ""
+    )
+    closing_embed = {
+        "title": f"✅ ĐÃ CẬP NHẬT XONG BẢN TIN NGÀY {digest.date_str}",
+        "description": (
+            f"{jump_line}"
+            f"📊 **Tổng kết:** Đã điểm qua **{total_items} tin tức** nổi bật thuộc **{len(digest.sections)} chuyên mục**.\n"
+            f"📚 **Lưu trữ trên GitHub:** [Xem bản đầy đủ ngày {digest.date_str}](https://github.com/solly1402/morning-pulse/blob/main/digests/{digest.date_str}.md)\n"
+            "☕ *Chúc bạn một ngày làm việc tràn đầy năng lượng! Hẹn gặp lại vào **06:30 sáng mai**.*"
+        ),
+        "color": 0x6366F1,  # Màu tím Indigo tách biệt hẳn với các chuyên mục tin tức
+        "footer": {
+            "text": f"🔒 Vạch ngăn cách ngày {digest.date_str} — Các tin phía trên vạch này thuộc bản tin sáng {digest.date_str}"
+        },
+    }
+    return {
+        "username": "Morning Pulse ☕",
+        "content": banner_text,
+        "embeds": [closing_embed],
     }
 
 
@@ -134,7 +170,7 @@ def _embed_char_len(embed: Dict[str, Any]) -> int:
 
 
 def send_discord_digest(digest: MorningDigest, webhook_url: str) -> bool:
-    """Gửi bản tin buổi sáng qua Discord Webhook với bố cục tạp chí (Magazine Cards) không bị cắt chữ."""
+    """Gửi bản tin buổi sáng qua Discord Webhook với bố cục tạp chí và vạch phân chia cuối ngày."""
     if not webhook_url:
         logger.info("Bỏ qua Discord: Chưa cấu hình DISCORD_WEBHOOK_URL.")
         return False
@@ -143,7 +179,6 @@ def send_discord_digest(digest: MorningDigest, webhook_url: str) -> bool:
     for sec in digest.sections:
         all_embeds.extend(_build_section_embeds(sec, digest.date_str))
 
-    # Gửi từng thẻ hoặc gom tối đa 4800 ký tự/lần để đảm bảo Discord hiển thị mượt và đúng thứ tự
     batches: List[List[Dict[str, Any]]] = []
     current_batch: List[Dict[str, Any]] = []
     current_chars = 0
@@ -160,25 +195,52 @@ def send_discord_digest(digest: MorningDigest, webhook_url: str) -> bool:
     if current_batch:
         batches.append(current_batch)
 
+    # Lấy guild_id từ webhook để tạo link nhảy thẳng lên tin nhắn mở đầu (Jump-to-top)
+    guild_id: str | None = None
+    try:
+        wh_info = requests.get(webhook_url, timeout=10).json()
+        guild_id = wh_info.get("guild_id")
+    except Exception:
+        pass
+
     success = True
+    jump_url: str | None = None
     for idx, batch in enumerate(batches):
         payload: Dict[str, Any] = {
             "username": "Morning Pulse ☕",
             "embeds": batch,
         }
+        if idx == 0:
+            payload["content"] = (
+                f"🌅 **`══════════ ☀️ BẮT ĐẦU BẢN TIN SÁNG {digest.date_str} ☀️ ══════════`**"
+            )
         try:
-            resp = requests.post(webhook_url, json=payload, timeout=25)
+            post_url = f"{webhook_url}?wait=true" if idx == 0 else webhook_url
+            resp = requests.post(post_url, json=payload, timeout=25)
             resp.raise_for_status()
-            if idx < len(batches) - 1:
-                time.sleep(0.6)
+            if idx == 0 and guild_id:
+                msg_data = resp.json()
+                channel_id = msg_data.get("channel_id")
+                first_msg_id = msg_data.get("id")
+                if channel_id and first_msg_id:
+                    jump_url = f"https://discord.com/channels/{guild_id}/{channel_id}/{first_msg_id}"
+            time.sleep(0.6)
         except Exception as exc:
             logger.error("Lỗi khi gửi Discord Webhook (batch %d): %s", idx + 1, exc)
             success = False
 
+    # Gửi vạch phân chia kết thúc bản tin trong ngày ở tin nhắn cuối cùng
+    try:
+        closing_payload = _build_closing_divider_payload(digest, jump_url=jump_url)
+        resp = requests.post(webhook_url, json=closing_payload, timeout=25)
+        resp.raise_for_status()
+    except Exception as exc:
+        logger.error("Lỗi khi gửi vạch phân chia cuối ngày trên Discord: %s", exc)
+        success = False
+
     if success:
         logger.info(
-            "Đã gửi thành công bản tin qua Discord Webhook (%d thẻ trong %d tin nhắn, không cắt chữ).",
-            len(all_embeds),
-            len(batches),
+            "Đã gửi thành công bản tin + vạch phân chia cuối ngày qua Discord Webhook (%d tin nhắn).",
+            len(batches) + 1,
         )
     return success
