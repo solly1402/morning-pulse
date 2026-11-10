@@ -48,8 +48,6 @@ FOOTBALL_LEAGUES = [
 DEFAULT_FAVORITE_TEAMS = [
     {"name": "Manchester United", "league": "eng.1", "team_id": "360", "emoji": "👹"},
     {"name": "Real Madrid", "league": "esp.1", "team_id": "86", "emoji": "👑"},
-    {"name": "Arsenal", "league": "eng.1", "team_id": "359", "emoji": "🔫"},
-    {"name": "Barcelona", "league": "esp.1", "team_id": "83", "emoji": "🔵🔴"},
 ]
 
 
