@@ -9,6 +9,7 @@ from src.models import NewsItem
 from src.notifiers.discord import send_discord_digest
 from src.notifiers.markdown_archive import save_markdown_digest
 from src.notifiers.telegram import send_telegram_digest
+from src.scrapers.article_reader import enrich_items_with_article_content
 from src.scrapers.github_trending import fetch_github_trending
 from src.scrapers.hackernews import fetch_hacker_news
 from src.scrapers.reddit import fetch_reddit_posts
@@ -84,6 +85,9 @@ def main() -> int:
     if not items:
         logger.error("Không thu thập được tin tức nào. Kết thúc chương trình.")
         return 1
+
+    # Trích xuất sâu nội dung bài viết gốc để AI tóm tắt chi tiết & đầy đủ ý chính
+    enrich_items_with_article_content(items)
 
     digest = build_morning_digest(items, cfg, date_obj=now_vn)
     outputs_cfg = cfg.get("outputs", {})

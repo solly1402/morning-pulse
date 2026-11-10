@@ -19,7 +19,7 @@ def _build_section_embed(sec: DigestSection, date_str: str) -> Dict[str, Any]:
         meta_str = f" `[{meta}]`" if meta else ""
         line = f"**{idx}. [{item.title}]({item.url})**{meta_str}"
         if item.summary:
-            short_sum = item.summary[:160] + "..." if len(item.summary) > 160 else item.summary
+            short_sum = item.summary[:650] + "..." if len(item.summary) > 650 else item.summary
             line += f"\n> {short_sum}"
         desc_lines.append(line)
 
