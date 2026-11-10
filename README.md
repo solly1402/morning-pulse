@@ -4,7 +4,7 @@
 
 **Trợ lý AI tự động tổng hợp & tóm tắt tin tức Công Nghệ + Bóng Đá Thế Giới mỗi sáng**
 
-[![Daily Digest Workflow](https://img.shields.io/badge/GitHub_Actions-Automated_06%3A30_AM-2088FF?style=for-the-badge&logo=github-actions&logoColor=white)](./.github/workflows/daily_digest.yml)
+[![Daily Digest Workflow](https://img.shields.io/badge/GitHub_Actions-Automated_05%3A45_AM-2088FF?style=for-the-badge&logo=github-actions&logoColor=white)](./.github/workflows/daily_digest.yml)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Gemini AI](https://img.shields.io/badge/AI-Google_Gemini_%7C_OpenAI-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white)](https://aistudio.google.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-success?style=for-the-badge)](./LICENSE)
@@ -33,7 +33,7 @@
   - 📱 **Telegram Bot:** Định dạng HTML sạch đẹp, tự động chia trang nếu bản tin dài.
   - 💬 **Discord Webhook:** Hiển thị dạng **Rich Embeds** chia màu theo từng chuyên mục.
   - 📄 **GitHub Daily Digest:** Tự động tạo file `digests/YYYY-MM-DD.md` và cập nhật mục lục ngay trên repo mỗi sáng.
-- ⚡ **Serverless 0 đồng:** Chạy tự động lúc **06:30 sáng (giờ Việt Nam)** hàng ngày bằng **GitHub Actions** mà không cần thuê VPS hay bật máy tính.
+- ⚡ **Serverless 0 đồng:** Chạy tự động lúc **05:45 sáng (giờ Việt Nam)** hàng ngày bằng **GitHub Actions** mà không cần thuê VPS hay bật máy tính.
 
 ---
 

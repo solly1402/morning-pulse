@@ -2,8 +2,8 @@ name: ☕ Morning Pulse Daily Digest
 
 on:
   schedule:
-    # Chạy tự động vào 23:30 UTC mỗi ngày = 06:30 sáng giờ Việt Nam (GMT+7)
-    - cron: "30 23 * * *"
+    # Chạy tự động vào 22:45 UTC mỗi ngày = 05:45 sáng giờ Việt Nam (GMT+7)
+    - cron: "45 22 * * *"
   workflow_dispatch: # Cho phép bấm nút "Run workflow" chạy thử bất cứ lúc nào trên GitHub
 
 permissions:

@@ -147,7 +147,7 @@ def _build_closing_divider_payload(
             f"{jump_line}"
             f"📊 **Tổng kết:** Đã điểm qua **{total_items} tin tức** nổi bật thuộc **{len(digest.sections)} chuyên mục**.\n"
             f"📚 **Lưu trữ trên GitHub:** [Xem bản đầy đủ ngày {digest.date_str}](https://github.com/solly1402/morning-pulse/blob/main/digests/{digest.date_str}.md)\n"
-            "☕ *Chúc bạn một ngày làm việc tràn đầy năng lượng! Hẹn gặp lại vào **06:30 sáng mai**.*"
+            "☕ *Chúc bạn một ngày làm việc tràn đầy năng lượng! Hẹn gặp lại vào **05:45 sáng mai**.*"
         ),
         "color": 0x6366F1,  # Màu tím Indigo tách biệt hẳn với các chuyên mục tin tức
         "footer": {

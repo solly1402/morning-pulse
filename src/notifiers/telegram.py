@@ -93,7 +93,7 @@ def _build_closing_html(digest: MorningDigest, first_msg_id: int | None = None) 
         f"✅ <b>Đã cập nhật xong {total_items} tin tức sáng {date_esc}!</b>",
         f"📚 <a href=\"https://github.com/solly1402/morning-pulse/blob/main/digests/{date_esc}.md\">Xem lưu trữ đầy đủ trên GitHub</a>",
         "📌 <i>Mẹo: Bấm vào thanh <b>Tin nhắn đã ghim (Pinned Message)</b> ở góc trên cùng màn hình để nhảy thẳng về đầu bản tin sáng nay mà không cần lướt tìm!</i>",
-        "☕ <i>Chúc bạn một ngày làm việc hiệu quả! Hẹn gặp lại vào 06:30 sáng mai.</i>",
+        "☕ <i>Chúc bạn một ngày làm việc hiệu quả! Hẹn gặp lại vào 05:45 sáng mai.</i>",
         "██████████████████████████████",
     ]
     return "\n".join(lines)
