@@ -6,12 +6,18 @@ from typing import List
 
 from src.config import BASE_DIR, load_config
 from src.models import NewsItem
+from src.notifiers.audio_podcast import generate_morning_audio
 from src.notifiers.discord import send_discord_digest
 from src.notifiers.markdown_archive import save_markdown_digest
 from src.notifiers.telegram import send_telegram_digest
 from src.scrapers.article_reader import enrich_items_with_article_content
+from src.scrapers.dedup import filter_and_record_seen_items
 from src.scrapers.github_trending import fetch_github_trending
 from src.scrapers.hackernews import fetch_hacker_news
+from src.scrapers.morning_assistant import (
+    fetch_upcoming_football_matches,
+    fetch_weather_summary,
+)
 from src.scrapers.reddit import fetch_reddit_posts
 from src.scrapers.rss_feeds import fetch_rss_category
 from src.summarizer.ai_summarizer import build_morning_digest
@@ -69,27 +75,41 @@ def main() -> int:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Chỉ thu thập và lưu file Markdown, không gửi qua Telegram/Discord.",
+        help="Chỉ thu thập và lưu file Markdown/Audio, không gửi qua Telegram/Discord.",
     )
     args = parser.parse_args()
 
-    # Đảm bảo console Windows hiển thị tiếng Việt và emoji chuẩn UTF-8
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
     cfg = load_config()
     vn_tz = timezone(timedelta(hours=7))
     now_vn = datetime.now(vn_tz)
+    today_str = now_vn.strftime("%Y-%m-%d")
 
-    items = collect_all_news(cfg)
-    if not items:
+    raw_items = collect_all_news(cfg)
+    if not raw_items:
         logger.error("Không thu thập được tin tức nào. Kết thúc chương trình.")
         return 1
+
+    # Lọc bỏ các bài viết cũ đã từng gửi trong 7 ngày trước đó (Smart Deduplication)
+    history_path = BASE_DIR / "digests" / "seen_history.json"
+    items = filter_and_record_seen_items(raw_items, history_path=history_path, today_str=today_str)
 
     # Trích xuất sâu nội dung bài viết gốc để AI tóm tắt chi tiết & đầy đủ ý chính
     enrich_items_with_article_content(items)
 
+    # Tổng hợp & dịch/biên tập bằng Gemini 3
     digest = build_morning_digest(items, cfg, date_obj=now_vn)
+
+    # Bổ sung Góc Trợ Lý Đầu Ngày: Thời tiết & Lịch thi đấu bóng đá tâm điểm
+    logger.info("🌤️ Đang lấy thông tin thời tiết & lịch thi đấu bóng đá hôm nay...")
+    digest.weather_summary = fetch_weather_summary()
+    digest.football_fixtures = fetch_upcoming_football_matches()
+
+    # Tạo file Audio MP3 phát thanh buổi sáng (2-3 phút)
+    digest.audio_path = generate_morning_audio(digest, base_dir=BASE_DIR)
+
     outputs_cfg = cfg.get("outputs", {})
     secrets = cfg.get("secrets", {})
 

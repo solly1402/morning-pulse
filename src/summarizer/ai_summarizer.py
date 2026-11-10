@@ -191,9 +191,32 @@ def build_morning_digest(
 
     overview = "\n\n".join(overview_lines) if overview_lines else default_overview
 
+    # Tự động trích xuất "Top 3 Tin Không Thể Bỏ Lỡ" (1 OpenSource/HN, 1 Tech/Reddit, 1 Bóng đá) để đọc lướt 30 giây
+    top_highlights: List[str] = []
+    priority_Order = [
+        ("github", "🚀 Mã nguồn mở"),
+        ("tech_news", "📰 Công nghệ"),
+        ("football", "⚽ Bóng đá"),
+        ("hackernews", "🟧 Hacker News"),
+        ("reddit", "👽 Reddit"),
+    ]
+    sec_by_key = {s.key: s for s in sections}
+    for key, label in priority_Order:
+        sec = sec_by_key.get(key)
+        if sec and sec.items:
+            top_item = sec.items[0]
+            first_bullet = top_item.summary.splitlines()[0] if top_item.summary else ""
+            first_bullet = first_bullet.replace("• 📌 Cốt lõi:", "").replace("•", "").strip()
+            top_highlights.append(
+                f"**[{label}] [{top_item.title}]({top_item.url})** — {first_bullet}"
+            )
+            if len(top_highlights) >= 3:
+                break
+
     return MorningDigest(
         date_str=date_str,
         greeting=greeting,
         ai_overview=overview,
         sections=sections,
+        top_highlights=top_highlights,
     )

@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 import time
@@ -104,30 +105,56 @@ def _build_section_embeds(sec: DigestSection, date_str: str) -> List[Dict[str, A
                 "footer": {
                     "text": f"☕ Morning Pulse • {sec.title}{page_suffix} • {date_str}"
                 },
+                "_section_key": sec.key if page_idx == 1 else "",
             }
         )
 
     return embeds
 
 
-def _build_overview_embed(digest: MorningDigest) -> Dict[str, Any]:
-    """Tạo thẻ Embed mở đầu (Hero Card) đánh dấu điểm bắt đầu của ngày mới."""
+def _build_overview_embed(
+    digest: MorningDigest, toc_links: List[str] | None = None
+) -> Dict[str, Any]:
+    """Tạo thẻ Embed mở đầu (Hero Card) chứa Thời tiết, Lịch bóng đá, Top 3 Đọc lướt 30s & Mục lục nhảy nhanh."""
+    parts: List[str] = [digest.greeting]
+
+    if toc_links:
+        parts.append("### 🧭 MỤC LỤC NHẢY NHANH (Bấm để cuộn tới chuyên mục)\n" + "  •  ".join(toc_links))
+
+    if digest.weather_summary or digest.football_fixtures:
+        assistant_lines: List[str] = ["### 🌤️ TRỢ LÝ ĐẦU NGÀY"]
+        if digest.weather_summary:
+            assistant_lines.append(digest.weather_summary)
+        if digest.football_fixtures:
+            assistant_lines.append("**⚽ Lịch & Kết quả các trận cầu tâm điểm:**\n" + digest.football_fixtures)
+        parts.append("\n".join(assistant_lines))
+
+    if digest.top_highlights:
+        hl_lines = ["### 🏆 ĐỌC LƯỚT 30 GIÂY — TOP 3 TIN KHÔNG THỂ BỎ LỠ"]
+        for idx, hl in enumerate(digest.top_highlights, 1):
+            hl_lines.append(f"{_num_badge(idx)} {hl}")
+        parts.append("\n".join(hl_lines))
+
+    parts.append(f"### 📌 TÂM ĐIỂM TOÀN CẢNH\n{digest.ai_overview}")
+
+    desc = f"\n\n{DIVIDER}\n\n".join(parts)
+    if len(desc) > 4000:
+        desc = desc[:3995] + "..."
+
     return {
         "title": f"☀️ BẮT ĐẦU BẢN TIN SÁNG — {digest.date_str}",
-        "description": (
-            f"{digest.greeting}\n\n"
-            f"### 📌 TÂM ĐIỂM SÁNG NAY\n"
-            f"{digest.ai_overview}"
-        ),
-        "color": 0xF59E0B,  # Màu vàng nắng buổi sáng
-        "footer": {"text": f"🌅 Điểm bắt đầu bản tin ngày {digest.date_str}"},
+        "description": desc,
+        "color": 0xF59E0B,
+        "footer": {"text": f"🌅 Điểm bắt đầu bản tin ngày {digest.date_str} • Bấm Play file MP3 phía trên để nghe phát thanh!"},
     }
 
 
 def _build_closing_divider_payload(
-    digest: MorningDigest, jump_url: str | None = None
+    digest: MorningDigest,
+    jump_url: str | None = None,
+    toc_links: List[str] | None = None,
 ) -> Dict[str, Any]:
-    """Tạo vạch phân cách cuối ngày nổi bật kèm nút nhảy lên đầu bản tin để không đọc nhầm sang ngày hôm trước."""
+    """Tạo vạch phân cách cuối ngày nổi bật kèm Mục lục nhảy nhanh và nút nhảy lên đầu bản tin."""
     total_items = sum(len(s.items) for s in digest.sections)
     banner_text = (
         "```\n"
@@ -137,19 +164,25 @@ def _build_closing_divider_payload(
         "```"
     )
     jump_line = (
-        f"⬆️ ** Điều hướng nhanh:** [**Nhấn vào đây để nhảy thẳng lên đầu bản tin hôm nay ({digest.date_str})**]({jump_url})\n"
+        f"⬆️ **Điều hướng nhanh:** [**Nhấn vào đây để nhảy thẳng lên đầu bản tin hôm nay ({digest.date_str})**]({jump_url})\n"
         if jump_url
+        else ""
+    )
+    toc_line = (
+        f"🧭 **Nhảy tới chuyên mục:** {'  •  '.join(toc_links)}\n"
+        if toc_links
         else ""
     )
     closing_embed = {
         "title": f"✅ ĐÃ CẬP NHẬT XONG BẢN TIN NGÀY {digest.date_str}",
         "description": (
             f"{jump_line}"
-            f"📊 **Tổng kết:** Đã điểm qua **{total_items} tin tức** nổi bật thuộc **{len(digest.sections)} chuyên mục**.\n"
+            f"{toc_line}"
+            f"📊 **Tổng kết:** Đã điểm qua **{total_items} tin tức mới** thuộc **{len(digest.sections)} chuyên mục**.\n"
             f"📚 **Lưu trữ trên GitHub:** [Xem bản đầy đủ ngày {digest.date_str}](https://github.com/solly1402/morning-pulse/blob/main/digests/{digest.date_str}.md)\n"
             "☕ *Chúc bạn một ngày làm việc tràn đầy năng lượng! Hẹn gặp lại vào **05:45 sáng mai**.*"
         ),
-        "color": 0x6366F1,  # Màu tím Indigo tách biệt hẳn với các chuyên mục tin tức
+        "color": 0x6366F1,
         "footer": {
             "text": f"🔒 Vạch ngăn cách ngày {digest.date_str} — Các tin phía trên vạch này thuộc bản tin sáng {digest.date_str}"
         },
@@ -161,77 +194,100 @@ def _build_closing_divider_payload(
     }
 
 
-def _embed_char_len(embed: Dict[str, Any]) -> int:
-    return (
-        len(embed.get("title", ""))
-        + len(embed.get("description", ""))
-        + len(embed.get("footer", {}).get("text", ""))
-    )
-
-
 def send_discord_digest(digest: MorningDigest, webhook_url: str) -> bool:
-    """Gửi bản tin buổi sáng qua Discord Webhook với bố cục tạp chí và vạch phân chia cuối ngày."""
+    """Gửi bản tin buổi sáng qua Discord kèm Audio MP3, Mục lục nhảy nhanh và Vạch phân chia cuối ngày."""
     if not webhook_url:
         logger.info("Bỏ qua Discord: Chưa cấu hình DISCORD_WEBHOOK_URL.")
         return False
 
-    all_embeds: List[Dict[str, Any]] = [_build_overview_embed(digest)]
-    for sec in digest.sections:
-        all_embeds.extend(_build_section_embeds(sec, digest.date_str))
-
-    batches: List[List[Dict[str, Any]]] = []
-    current_batch: List[Dict[str, Any]] = []
-    current_chars = 0
-
-    for emb in all_embeds:
-        emb_len = _embed_char_len(emb)
-        if current_batch and (current_chars + emb_len > 4800 or len(current_batch) >= 3):
-            batches.append(current_batch)
-            current_batch = [emb]
-            current_chars = emb_len
-        else:
-            current_batch.append(emb)
-            current_chars += emb_len
-    if current_batch:
-        batches.append(current_batch)
-
-    # Lấy guild_id từ webhook để tạo link nhảy thẳng lên tin nhắn mở đầu (Jump-to-top)
     guild_id: str | None = None
+    channel_id: str | None = None
     try:
         wh_info = requests.get(webhook_url, timeout=10).json()
         guild_id = wh_info.get("guild_id")
+        channel_id = wh_info.get("channel_id")
     except Exception:
         pass
 
     success = True
+    first_msg_id: str | None = None
     jump_url: str | None = None
-    for idx, batch in enumerate(batches):
-        payload: Dict[str, Any] = {
-            "username": "Morning Pulse ☕",
-            "embeds": batch,
-        }
-        if idx == 0:
-            payload["content"] = (
-                f"🌅 **`══════════ ☀️ BẮT ĐẦU BẢN TIN SÁNG {digest.date_str} ☀️ ══════════`**"
-            )
-        try:
-            post_url = f"{webhook_url}?wait=true" if idx == 0 else webhook_url
-            resp = requests.post(post_url, json=payload, timeout=25)
-            resp.raise_for_status()
-            if idx == 0 and guild_id:
-                msg_data = resp.json()
-                channel_id = msg_data.get("channel_id")
-                first_msg_id = msg_data.get("id")
-                if channel_id and first_msg_id:
-                    jump_url = f"https://discord.com/channels/{guild_id}/{channel_id}/{first_msg_id}"
-            time.sleep(0.6)
-        except Exception as exc:
-            logger.error("Lỗi khi gửi Discord Webhook (batch %d): %s", idx + 1, exc)
-            success = False
+    section_jump_links: List[str] = []
 
-    # Gửi vạch phân chia kết thúc bản tin trong ngày ở tin nhắn cuối cùng
+    # 1. Gửi thẻ Mở đầu (Hero Overview Card) + Đính kèm file Audio MP3 phát thanh buổi sáng
+    overview_embed = _build_overview_embed(digest)
+    hero_payload = {
+        "username": "Morning Pulse ☕",
+        "content": f"🌅 **`══════════ ☀️ BẮT ĐẦU BẢN TIN SÁNG {digest.date_str} ☀️ ══════════`**\n🎧 *Bấm **Play ▶** bên dưới để nghe phát thanh điểm tin buổi sáng trong lúc pha cà phê nhé!*",
+        "embeds": [overview_embed],
+    }
+
     try:
-        closing_payload = _build_closing_divider_payload(digest, jump_url=jump_url)
+        post_url = f"{webhook_url}?wait=true"
+        if digest.audio_path and digest.audio_path.exists():
+            with open(digest.audio_path, "rb") as audio_file:
+                resp = requests.post(
+                    post_url,
+                    data={"payload_json": json.dumps(hero_payload)},
+                    files={"file": (digest.audio_path.name, audio_file, "audio/mpeg")},
+                    timeout=35,
+                )
+        else:
+            resp = requests.post(post_url, json=hero_payload, timeout=25)
+        resp.raise_for_status()
+        msg_data = resp.json()
+        first_msg_id = msg_data.get("id")
+        channel_id = msg_data.get("channel_id") or channel_id
+        if guild_id and channel_id and first_msg_id:
+            jump_url = f"https://discord.com/channels/{guild_id}/{channel_id}/{first_msg_id}"
+        time.sleep(0.6)
+    except Exception as exc:
+        logger.error("Lỗi khi gửi thẻ mở đầu Discord: %s", exc)
+        success = False
+
+    # 2. Gửi lần lượt từng chuyên mục và ghi nhận link nhảy tới đầu mỗi chuyên mục
+    sec_meta_map = {s.key: (s.emoji, s.title) for s in digest.sections}
+    for sec in digest.sections:
+        sec_embeds = _build_section_embeds(sec, digest.date_str)
+        # Chia mỗi lần gửi tối đa 2 thẻ của cùng 1 chuyên mục để dưới 4800 ký tự
+        for i in range(0, len(sec_embeds), 2):
+            chunk = sec_embeds[i : i + 2]
+            clean_chunk = [{k: v for k, v in emb.items() if not k.startswith("_")} for emb in chunk]
+            try:
+                resp = requests.post(
+                    f"{webhook_url}?wait=true",
+                    json={"username": "Morning Pulse ☕", "embeds": clean_chunk},
+                    timeout=25,
+                )
+                resp.raise_for_status()
+                if i == 0 and guild_id and channel_id:
+                    sec_msg_id = resp.json().get("id")
+                    if sec_msg_id:
+                        emoji, title = sec_meta_map[sec.key]
+                        sec_url = f"https://discord.com/channels/{guild_id}/{channel_id}/{sec_msg_id}"
+                        section_jump_links.append(f"[{emoji} {title}]({sec_url})")
+                time.sleep(0.6)
+            except Exception as exc:
+                logger.error("Lỗi khi gửi chuyên mục %s lên Discord: %s", sec.title, exc)
+                success = False
+
+    # 3. Cập nhật (PATCH) lại thẻ Mở đầu để gắn thanh Mục Lục Nhảy Nhanh (Table of Contents)
+    if first_msg_id and section_jump_links:
+        try:
+            updated_overview = _build_overview_embed(digest, toc_links=section_jump_links)
+            requests.patch(
+                f"{webhook_url}/messages/{first_msg_id}",
+                json={"embeds": [updated_overview]},
+                timeout=15,
+            )
+        except Exception as exc:
+            logger.debug("Không thể cập nhật Mục lục vào thẻ mở đầu Discord: %s", exc)
+
+    # 4. Gửi vạch phân chia kết thúc bản tin trong ngày ở tin nhắn cuối cùng
+    try:
+        closing_payload = _build_closing_divider_payload(
+            digest, jump_url=jump_url, toc_links=section_jump_links
+        )
         resp = requests.post(webhook_url, json=closing_payload, timeout=25)
         resp.raise_for_status()
     except Exception as exc:
@@ -239,8 +295,5 @@ def send_discord_digest(digest: MorningDigest, webhook_url: str) -> bool:
         success = False
 
     if success:
-        logger.info(
-            "Đã gửi thành công bản tin + vạch phân chia cuối ngày qua Discord Webhook (%d tin nhắn).",
-            len(batches) + 1,
-        )
+        logger.info("Đã gửi thành công bản tin + Audio MP3 + Mục lục nhảy nhanh qua Discord Webhook.")
     return success

@@ -25,13 +25,40 @@ def render_digest_markdown(digest: MorningDigest) -> str:
         "",
         f"> {digest.greeting}",
         "",
-        "## 📌 Điểm Tin Tổng Quan",
-        "",
-        digest.ai_overview,
-        "",
-        "---",
-        "",
     ]
+
+    if digest.audio_path and digest.audio_path.exists():
+        lines.extend(
+            [
+                f"🎧 **[Nghe Bản Tin Phát Thanh Buổi Sáng (MP3)](./audio/{digest.audio_path.name})**",
+                "",
+            ]
+        )
+
+    if digest.weather_summary or digest.football_fixtures:
+        lines.extend(["## 🌤️ Trợ Lý Đầu Ngày", ""])
+        if digest.weather_summary:
+            lines.extend([digest.weather_summary, ""])
+        if digest.football_fixtures:
+            lines.extend(["### ⚽ Lịch & Kết quả các trận cầu tâm điểm", "", digest.football_fixtures, ""])
+        lines.extend(["---", ""])
+
+    if digest.top_highlights:
+        lines.extend(["## 🏆 Đọc Lướt 30 Giây — Top 3 Tin Không Thể Bỏ Lỡ", ""])
+        for idx, hl in enumerate(digest.top_highlights, 1):
+            lines.append(f"{idx}. {hl}")
+        lines.extend(["", "---", ""])
+
+    lines.extend(
+        [
+            "## 📌 Điểm Tin Toàn Cảnh",
+            "",
+            digest.ai_overview,
+            "",
+            "---",
+            "",
+        ]
+    )
 
     for sec in digest.sections:
         lines.append(f"## {sec.emoji} {sec.title}")
@@ -89,7 +116,9 @@ def save_markdown_digest(digest: MorningDigest, base_dir: Path, rel_dir: str = "
     ]
     for p in digest_files:
         date_label = p.stem
-        index_lines.append(f"- 📅 **[{date_label}](./{p.name})**")
+        audio_candidate = out_dir / "audio" / f"morning-pulse-{date_label}.mp3"
+        audio_badge = f" · [🎧 Audio MP3](./audio/morning-pulse-{date_label}.mp3)" if audio_candidate.exists() else ""
+        index_lines.append(f"- 📅 **[{date_label}](./{p.name})**{audio_badge}")
 
     index_path = out_dir / "README.md"
     index_path.write_text("\n".join(index_lines) + "\n", encoding="utf-8")

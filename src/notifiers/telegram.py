@@ -38,6 +38,20 @@ def _discover_chat_id(bot_token: str) -> str:
     return ""
 
 
+def _md_to_telegram_html(text: str) -> str:
+    """Chuyển đổi các cú pháp Markdown cơ bản (**bold**, *italic*, `code`, [text](url)) sang HTML cho Telegram."""
+    escaped = html.escape(text)
+    escaped = re.sub(
+        r"\[([^\]]+)\]\((https?://[^\)]+)\)",
+        r'<a href="\2"><b>\1</b></a>',
+        escaped,
+    )
+    escaped = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", escaped)
+    escaped = re.sub(r"\*(.+?)\*", r"<i>\1</i>", escaped)
+    escaped = re.sub(r"`(.+?)`", r"<code>\1</code>", escaped)
+    return escaped
+
+
 def _format_summary_html(summary: str) -> str:
     escaped = html.escape(summary)
     escaped = re.sub(
@@ -83,7 +97,37 @@ def _format_section_html(sec: DigestSection) -> str:
     return "\n".join(lines).strip()
 
 
-def _build_closing_html(digest: MorningDigest, first_msg_id: int | None = None) -> str:
+def _build_header_html(digest: MorningDigest) -> str:
+    header_lines = [
+        "<pre>╔════════════════════════════════════╗\n"
+        f"║   ☀️ BẮT ĐẦU BẢN TIN {html.escape(digest.date_str)}   ║\n"
+        "╚════════════════════════════════════╝</pre>",
+    ]
+
+    if digest.weather_summary or digest.football_fixtures:
+        header_lines.append("🌤️ <b>TRỢ LÝ ĐẦU NGÀY</b>")
+        assistant_parts: List[str] = []
+        if digest.weather_summary:
+            assistant_parts.append(_md_to_telegram_html(digest.weather_summary))
+        if digest.football_fixtures:
+            assistant_parts.append("<b>⚽ Lịch & Kết quả bóng đá tâm điểm:</b>\n" + _md_to_telegram_html(digest.football_fixtures))
+        header_lines.append("<blockquote>" + "\n\n".join(assistant_parts) + "</blockquote>")
+        header_lines.append("")
+
+    if digest.top_highlights:
+        header_lines.append("🏆 <b>ĐỌC LƯỚT 30 GIÂY — TOP 3 TIN KHÔNG THỂ BỎ LỠ</b>")
+        hl_parts = [f"{_num_badge(i)} {_md_to_telegram_html(hl)}" for i, hl in enumerate(digest.top_highlights, 1)]
+        header_lines.append("<blockquote>" + "\n\n".join(hl_parts) + "</blockquote>")
+        header_lines.append("")
+
+    overview_html = _md_to_telegram_html(digest.ai_overview)
+    header_lines.append("📌 <b>TÂM ĐIỂM TOÀN CẢNH</b>")
+    header_lines.append(f"<blockquote>{overview_html}</blockquote>")
+
+    return "\n".join(header_lines)
+
+
+def _build_closing_html(digest: MorningDigest) -> str:
     total_items = sum(len(s.items) for s in digest.sections)
     date_esc = html.escape(digest.date_str)
     lines = [
@@ -92,7 +136,7 @@ def _build_closing_html(digest: MorningDigest, first_msg_id: int | None = None) 
         "╚════════════════════════════════════╝</pre>",
         f"✅ <b>Đã cập nhật xong {total_items} tin tức sáng {date_esc}!</b>",
         f"📚 <a href=\"https://github.com/solly1402/morning-pulse/blob/main/digests/{date_esc}.md\">Xem lưu trữ đầy đủ trên GitHub</a>",
-        "📌 <i>Mẹo: Bấm vào thanh <b>Tin nhắn đã ghim (Pinned Message)</b> ở góc trên cùng màn hình để nhảy thẳng về đầu bản tin sáng nay mà không cần lướt tìm!</i>",
+        "📌 <i>Mẹo: Bấm vào thanh <b>Tin nhắn đã ghim (Pinned Message)</b> ở góc trên cùng màn hình để nhảy thẳng về đầu bản tin sáng nay (kèm file Audio phát thanh) mà không cần lướt tìm!</i>",
         "☕ <i>Chúc bạn một ngày làm việc hiệu quả! Hẹn gặp lại vào 05:45 sáng mai.</i>",
         "██████████████████████████████",
     ]
@@ -100,7 +144,7 @@ def _build_closing_html(digest: MorningDigest, first_msg_id: int | None = None) 
 
 
 def send_telegram_digest(digest: MorningDigest, bot_token: str, chat_id: str) -> bool:
-    """Gửi bản tin buổi sáng qua Telegram Bot, tự động ghim tin mở đầu và gửi vạch kết thúc ngày."""
+    """Gửi bản tin buổi sáng qua Telegram Bot, đính kèm Audio Podcast MP3, ghim tin mở đầu và gửi vạch kết thúc ngày."""
     if not bot_token:
         logger.info("Bỏ qua Telegram: Chưa cấu hình TELEGRAM_BOT_TOKEN.")
         return False
@@ -112,17 +156,7 @@ def send_telegram_digest(digest: MorningDigest, bot_token: str, chat_id: str) ->
         )
         return False
 
-    overview_html = html.escape(digest.ai_overview)
-    overview_html = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", overview_html)
-
-    header_lines = [
-        "<pre>╔════════════════════════════════════╗\n"
-        f"║   ☀️ BẮT ĐẦU BẢN TIN {html.escape(digest.date_str)}   ║\n"
-        "╚════════════════════════════════════╝</pre>",
-        "📌 <b>TÂM ĐIỂM SÁNG NAY</b>",
-        f"<blockquote>{overview_html}</blockquote>",
-    ]
-    header_block = "\n".join(header_lines)
+    header_block = _build_header_html(digest)
 
     blocks: List[str] = [header_block]
     for sec in digest.sections:
@@ -146,10 +180,10 @@ def send_telegram_digest(digest: MorningDigest, bot_token: str, chat_id: str) ->
             if sub_msg:
                 messages.append(sub_msg)
 
-    # Thêm vạch phân chia kết thúc ngày làm tin nhắn chốt sổ cuối cùng
     messages.append(_build_closing_html(digest))
 
     api_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    audio_url = f"https://api.telegram.org/bot{bot_token}/sendAudio"
     pin_url = f"https://api.telegram.org/bot{bot_token}/pinChatMessage"
     success = True
     first_message_id: int | None = None
@@ -179,7 +213,26 @@ def send_telegram_digest(digest: MorningDigest, bot_token: str, chat_id: str) ->
         if not sent:
             success = False
 
-    # Tự động Ghim (Pin) tin nhắn đầu tiên của ngày hôm nay để người dùng bấm 1 chạm nhảy lên đầu ngày mới
+        # Ngay sau tin nhắn Mở đầu (idx == 0), gửi file Audio MP3 phát thanh buổi sáng
+        if idx == 0 and digest.audio_path and digest.audio_path.exists():
+            try:
+                with open(digest.audio_path, "rb") as af:
+                    requests.post(
+                        audio_url,
+                        data={
+                            "chat_id": effective_chat_id,
+                            "title": f"Bản Tin Phát Thanh Sáng {digest.date_str}",
+                            "performer": "Morning Pulse AI Radio ☕",
+                            "caption": f"🎧 <b>Bản tin phát thanh buổi sáng ({digest.date_str})</b> — Bấm Play để nghe điểm tin trong 2 phút!",
+                            "parse_mode": "HTML",
+                        },
+                        files={"audio": (digest.audio_path.name, af, "audio/mpeg")},
+                        timeout=45,
+                    )
+                logger.info("🎧 Đã gửi file Audio phát thanh qua Telegram.")
+            except Exception as exc:
+                logger.warning("Không thể gửi file Audio qua Telegram: %s", exc)
+
     if first_message_id:
         try:
             requests.post(
@@ -196,5 +249,5 @@ def send_telegram_digest(digest: MorningDigest, bot_token: str, chat_id: str) ->
             logger.debug("Không thể ghim tin nhắn Telegram: %s", exc)
 
     if success:
-        logger.info("Đã gửi thành công bản tin + vạch phân chia cuối ngày qua Telegram (%d tin nhắn).", len(messages))
+        logger.info("Đã gửi thành công bản tin + Audio + vạch phân chia cuối ngày qua Telegram.")
     return success
