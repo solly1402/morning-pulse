@@ -1,0 +1,71 @@
+# Cấu hình chung cho Morning Pulse
+app:
+  name: "Morning Pulse ☕"
+  timezone: "Asia/Ho_Chi_Minh"
+  language: "vi"
+
+# Cấu hình AI Summarizer
+ai:
+  enabled: true
+  provider: "gemini" # "gemini" hoặc "openai" (hỗ trợ cả Groq, OpenRouter)
+  gemini_model: "gemini-3.1-pro-preview"
+  gemini_fallback_models:
+    - "gemini-3-flash-preview"
+    - "gemini-2.5-pro"
+    - "gemini-2.5-flash"
+  temperature: 0.4
+
+# Cấu hình các nguồn tin
+sources:
+  github_trending:
+    enabled: true
+    since: "daily" # daily, weekly, monthly
+    spoken_language: "" # để trống lấy toàn cầu, hoặc "en", "vi"
+    programming_languages:
+      - "" # Tất cả ngôn ngữ
+    limit: 6
+
+  hacker_news:
+    enabled: true
+    limit: 6
+
+  reddit:
+    enabled: true
+    limit_per_sub: 3
+    subreddits:
+      - "programming"
+      - "technology"
+      - "LocalLLaMA"
+      - "soccer"
+
+  tech_news:
+    enabled: true
+    limit_per_feed: 3
+    feeds:
+      - name: "TechCrunch"
+        url: "https://techcrunch.com/feed/"
+      - name: "The Verge"
+        url: "https://www.theverge.com/rss/index.xml"
+      - name: "VnExpress Số Hóa"
+        url: "https://vnexpress.net/rss/so-hoa.rss"
+
+  football:
+    enabled: true
+    limit_per_feed: 4
+    feeds:
+      - name: "BBC Sport Football"
+        url: "https://feeds.bbci.co.uk/sport/football/rss.xml"
+      - name: "The Guardian Football"
+        url: "https://www.theguardian.com/football/rss"
+      - name: "VnExpress Thể Thao"
+        url: "https://vnexpress.net/rss/the-thao.rss"
+
+# Cấu hình đầu ra
+outputs:
+  markdown_archive:
+    enabled: true
+    directory: "digests"
+  telegram:
+    enabled: true
+  discord:
+    enabled: true

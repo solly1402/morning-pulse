@@ -1,0 +1,87 @@
+import logging
+from pathlib import Path
+from typing import List
+
+from src.models import MorningDigest
+
+logger = logging.getLogger(__name__)
+
+
+def render_digest_markdown(digest: MorningDigest) -> str:
+    """Chuyển đổi đối tượng MorningDigest sang định dạng Markdown chuẩn GitHub."""
+    lines: List[str] = [
+        f"# ☕ Morning Pulse — Bản Tin Sáng `{digest.date_str}`",
+        "",
+        f"> {digest.greeting}",
+        "",
+        "## 📌 Điểm Tin Tổng Quan",
+        "",
+        digest.ai_overview,
+        "",
+        "---",
+        "",
+    ]
+
+    for sec in digest.sections:
+        lines.append(f"## {sec.emoji} {sec.title}")
+        lines.append("")
+        if sec.ai_commentary:
+            lines.append(f"> 💡 **Góc nhìn AI:** *{sec.ai_commentary}*")
+            lines.append("")
+
+        for idx, item in enumerate(sec.items, 1):
+            meta_badges: List[str] = []
+            if item.extra_meta:
+                meta_badges.append(f"`{item.extra_meta}`")
+            if item.score:
+                meta_badges.append(f"`{item.score}`")
+            if item.comments_url and item.comments_url != item.url:
+                meta_badges.append(f"[💬 Thảo luận]({item.comments_url})")
+
+            meta_str = " · ".join(meta_badges)
+            header = f"### {idx}. [{item.title}]({item.url})"
+            lines.append(header)
+            if meta_str:
+                lines.append(f"- **Thông tin:** {meta_str}")
+            if item.summary:
+                lines.append(f"- **Tóm tắt:** {item.summary}")
+            lines.append("")
+
+        lines.append("---")
+        lines.append("")
+
+    lines.append("*Bản tin được tạo tự động bởi **Morning Pulse**.*")
+    return "\n".join(lines)
+
+
+def save_markdown_digest(digest: MorningDigest, base_dir: Path, rel_dir: str = "digests") -> Path:
+    """Lưu bản tin ra file digests/YYYY-MM-DD.md và cập nhật mục lục digests/README.md."""
+    out_dir = base_dir / rel_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    file_path = out_dir / f"{digest.date_str}.md"
+    md_content = render_digest_markdown(digest)
+    file_path.write_text(md_content, encoding="utf-8")
+
+    # Cập nhật file digests/README.md làm trang danh mục lưu trữ
+    digest_files = sorted(
+        [p for p in out_dir.glob("????-??-??.md") if p.is_file()],
+        key=lambda p: p.name,
+        reverse=True,
+    )
+
+    index_lines = [
+        "# 📚 Kho Lưu Trữ Bản Tin Hàng Ngày (Daily Digests)",
+        "",
+        "Danh sách các bản tin buổi sáng được tổng hợp tự động theo từng ngày:",
+        "",
+    ]
+    for p in digest_files:
+        date_label = p.stem
+        index_lines.append(f"- 📅 **[{date_label}](./{p.name})**")
+
+    index_path = out_dir / "README.md"
+    index_path.write_text("\n".join(index_lines) + "\n", encoding="utf-8")
+
+    logger.info("Đã lưu bản tin Markdown tại: %s", file_path)
+    return file_path
