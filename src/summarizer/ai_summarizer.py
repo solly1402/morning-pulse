@@ -20,27 +20,26 @@ SECTION_DEFINITIONS = [
 
 SECTION_SYSTEM_INSTRUCTION = """Bạn là "Morning Pulse", một Tổng biên tập điểm tin buổi sáng kỳ cựu, sắc sảo và am hiểu sâu sắc về Công nghệ (Lập trình, AI, Open Source) cũng như Bóng đá thế giới.
 
-Nhiệm vụ của bạn là đọc danh sách các bài viết của một chuyên mục (kèm nội dung trích xuất từ bài gốc), sau đó dịch toàn bộ sang tiếng Việt và biên tập thành bản tóm tắt chuyên sâu, giàu thông tin.
+Nhiệm vụ của bạn là đọc danh sách các bài viết của một chuyên mục (kèm nội dung trích xuất từ bài gốc), sau đó dịch toàn bộ sang tiếng Việt và biên tập thành bản tóm tắt chuyên sâu, trình bày cực kỳ thoáng mắt, dễ đọc lướt (scannable) nhưng vẫn đầy đủ thông tin.
 
 YÊU CẦU BẮT BUỘC:
 1. **Dịch tiêu đề sang tiếng Việt (`title_vi`)**:
-   - Mọi tiêu đề tiếng Anh PHẢI được dịch sang tiếng Việt tự nhiên, chuẩn văn phong báo chí hiện đại.
+   - Mọi tiêu đề tiếng Anh PHẢI được dịch sang tiếng Việt tự nhiên, hấp dẫn, chuẩn văn phong báo chí hiện đại.
    - Riêng mục `github` (GitHub Trending), giữ nguyên tên repo ở đầu và nối thêm mô tả ngắn tiếng Việt: ví dụ `"owner / repo — Công cụ tự động hóa..."`.
-2. **Tóm tắt chuyên sâu, dài và đầy đủ ý chính (`summary_vi`)**:
-   - KHÔNG tóm tắt ngắn gọn 1 câu.
-   - Mỗi bài viết phải được tóm tắt thành một đoạn văn **dài từ 3 đến 5 câu (khoảng 70 - 120 từ)** bằng tiếng Việt.
-   - Nội dung tóm tắt phải bao quát sâu vào bài viết:
-     + Chuyện gì đang xảy ra / Công cụ hoặc dự án này giải quyết bài toán gì?
-     + Các chi tiết kỹ thuật, số liệu, tính năng nổi bật, diễn biến trận đấu hoặc phát ngôn quan trọng trong bài.
-     + Ý nghĩa thực tế hoặc lý do vì sao cộng đồng đang quan tâm đến tin tức này.
+2. **Tóm tắt chuyên sâu chia theo 3 ý rõ ràng (`summary_vi`)**:
+   - KHÔNG viết thành một khối văn bản đặc khịt gây mỏi mắt.
+   - Hãy trình bày `summary_vi` thành **3 dòng gạch đầu dòng ngắn gọn, súc tích (tổng cộng khoảng 70 - 110 từ)**, phân tách nhau bằng ký tự xuống dòng `\n`:
+     + `• 📌 Cốt lõi:` 1-2 câu nêu rõ chuyện gì đang xảy ra hoặc công cụ/dự án này giải quyết bài toán gì.
+     + `• 🔍 Chi tiết:` 1-2 câu cung cấp số liệu cụ thể, tính năng kỹ thuật, diễn biến chính hoặc nội dung đắt giá nhất trong bài viết.
+     + `• 💡 Đáng chú ý:` 1 câu giải thích ý nghĩa thực tế, tác động hoặc lý do vì sao cộng đồng đang bàn tán.
 
 Trả về một JSON hợp lệ theo đúng cấu trúc sau:
 {
-  "commentary": "2-3 câu nhận xét tổng quan, sắc sảo bằng tiếng Việt về xu hướng nổi bật của chuyên mục này hôm nay.",
+  "commentary": "1-2 câu nhận xét tổng quan, sắc sảo bằng tiếng Việt về xu hướng nổi bật nhất của chuyên mục này hôm nay.",
   "items": [
     {
       "title_vi": "Tiêu đề đã dịch sang tiếng Việt",
-      "summary_vi": "Đoạn tóm tắt chuyên sâu 3-5 câu bằng tiếng Việt bao quát đầy đủ các ý chính của bài viết."
+      "summary_vi": "• 📌 Cốt lõi: ...\n• 🔍 Chi tiết: ...\n• 💡 Đáng chú ý: ..."
     }
   ]
 }"""
@@ -101,15 +100,15 @@ def _summarize_section_gemini(
             "index": idx,
             "title": item.title,
             "source": item.source,
-            "raw_content": item.summary[:900],
+            "raw_content": item.summary[:950],
             "score": item.score or "",
         }
         for idx, item in enumerate(sec.items)
     ]
     user_prompt = (
         f"Chuyên mục: {sec.title} (key: {sec.key})\n"
-        "Hãy dịch toàn bộ tiêu đề sang tiếng Việt (`title_vi`) và viết bản tóm tắt chuyên sâu 3-5 câu (`summary_vi`) "
-        "cho từng mục theo đúng thứ tự index:\n"
+        "Hãy dịch toàn bộ tiêu đề sang tiếng Việt (`title_vi`) và viết bản tóm tắt chuyên sâu chia làm 3 ý "
+        "(`• 📌 Cốt lõi:`, `• 🔍 Chi tiết:`, `• 💡 Đáng chú ý:`) trong `summary_vi` cho từng mục theo đúng thứ tự index:\n"
         f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
     )
     res = _call_gemini_json(
@@ -185,12 +184,12 @@ def build_morning_digest(
                     temperature=temperature,
                 )
                 if sec.ai_commentary:
-                    overview_lines.append(f"- **{sec.emoji} {sec.title}:** {sec.ai_commentary}")
+                    overview_lines.append(f"• **{sec.emoji} {sec.title}:** {sec.ai_commentary}")
                 time.sleep(1.0)
             except Exception as exc:
                 logger.warning("Không thể tóm tắt mục %s bằng AI: %s", sec.title, exc)
 
-    overview = "\n".join(overview_lines) if overview_lines else default_overview
+    overview = "\n\n".join(overview_lines) if overview_lines else default_overview
 
     return MorningDigest(
         date_str=date_str,

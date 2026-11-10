@@ -1,10 +1,21 @@
 import logging
+import re
 from pathlib import Path
 from typing import List
 
 from src.models import MorningDigest
 
 logger = logging.getLogger(__name__)
+
+
+def _format_md_summary(summary: str) -> str:
+    formatted = re.sub(
+        r"(•\s*📌\s*Cốt lõi:|•\s*🔍\s*Chi tiết:|•\s*💡\s*Đáng chú ý:)",
+        r"**\1**",
+        summary,
+    )
+    lines = [line.strip() for line in formatted.splitlines() if line.strip()]
+    return "\n".join(f"> {line}" for line in lines)
 
 
 def render_digest_markdown(digest: MorningDigest) -> str:
@@ -42,9 +53,10 @@ def render_digest_markdown(digest: MorningDigest) -> str:
             header = f"### {idx}. [{item.title}]({item.url})"
             lines.append(header)
             if meta_str:
-                lines.append(f"- **Thông tin:** {meta_str}")
+                lines.append(f"🏷️ {meta_str}")
+                lines.append("")
             if item.summary:
-                lines.append(f"- **Tóm tắt:** {item.summary}")
+                lines.append(_format_md_summary(item.summary))
             lines.append("")
 
         lines.append("---")
@@ -63,7 +75,6 @@ def save_markdown_digest(digest: MorningDigest, base_dir: Path, rel_dir: str = "
     md_content = render_digest_markdown(digest)
     file_path.write_text(md_content, encoding="utf-8")
 
-    # Cập nhật file digests/README.md làm trang danh mục lưu trữ
     digest_files = sorted(
         [p for p in out_dir.glob("????-??-??.md") if p.is_file()],
         key=lambda p: p.name,

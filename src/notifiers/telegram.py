@@ -1,5 +1,6 @@
 import html
 import logging
+import re
 from typing import List
 
 import requests
@@ -9,6 +10,13 @@ from src.models import DigestSection, MorningDigest
 logger = logging.getLogger(__name__)
 
 MAX_TELEGRAM_LEN = 3800
+NUM_EMOJIS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+
+
+def _num_badge(idx: int) -> str:
+    if 1 <= idx <= len(NUM_EMOJIS):
+        return NUM_EMOJIS[idx - 1]
+    return f"#{idx}"
 
 
 def _discover_chat_id(bot_token: str) -> str:
@@ -30,33 +38,53 @@ def _discover_chat_id(bot_token: str) -> str:
     return ""
 
 
+def _format_summary_html(summary: str) -> str:
+    escaped = html.escape(summary)
+    escaped = re.sub(
+        r"(•\s*📌\s*Cốt lõi:|•\s*🔍\s*Chi tiết:|•\s*💡\s*Đáng chú ý:)",
+        r"<b>\1</b>",
+        escaped,
+    )
+    return f"<blockquote>{escaped}</blockquote>"
+
+
 def _format_section_html(sec: DigestSection) -> str:
-    lines = [f"<b>{sec.emoji} {html.escape(sec.title.upper())}</b>"]
+    lines = [
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"{sec.emoji} <b>{html.escape(sec.title.upper())}</b>",
+        "━━━━━━━━━━━━━━━━━━━━",
+    ]
     if sec.ai_commentary:
-        lines.append(f"<i>💡 {html.escape(sec.ai_commentary)}</i>")
+        lines.append(f"💡 <i>{html.escape(sec.ai_commentary)}</i>")
     lines.append("")
 
     for idx, item in enumerate(sec.items, 1):
+        badge = _num_badge(idx)
         title_escaped = html.escape(item.title)
         url_escaped = html.escape(item.url, quote=True)
         meta_parts = []
         if item.extra_meta:
-            meta_parts.append(html.escape(item.extra_meta))
+            meta_parts.append(f"<code>{html.escape(item.extra_meta)}</code>")
+        elif item.source:
+            meta_parts.append(f"<code>{html.escape(item.source)}</code>")
         if item.score:
-            meta_parts.append(html.escape(item.score))
-        meta_str = f" (<code>{' | '.join(meta_parts)}</code>)" if meta_parts else ""
+            meta_parts.append(f"<code>{html.escape(item.score)}</code>")
+        if item.comments_url and item.comments_url != item.url:
+            comm_escaped = html.escape(item.comments_url, quote=True)
+            meta_parts.append(f"<a href=\"{comm_escaped}\">💬 Thảo luận</a>")
 
-        line = f"{idx}. <a href=\"{url_escaped}\"><b>{title_escaped}</b></a>{meta_str}"
+        lines.append(f"{badge} <a href=\"{url_escaped}\"><b>{title_escaped}</b></a>")
+        if meta_parts:
+            lines.append("🏷️ " + " • ".join(meta_parts))
         if item.summary:
-            line += f"\n   └ {html.escape(item.summary)}"
-        lines.append(line)
+            lines.append(_format_summary_html(item.summary))
         lines.append("")
 
     return "\n".join(lines).strip()
 
 
 def send_telegram_digest(digest: MorningDigest, bot_token: str, chat_id: str) -> bool:
-    """Gửi bản tin buổi sáng qua Telegram Bot (tự động dò Chat ID nếu chưa cấu hình)."""
+    """Gửi bản tin buổi sáng qua Telegram Bot với thẻ trích dẫn <blockquote> trực quan."""
     if not bot_token:
         logger.info("Bỏ qua Telegram: Chưa cấu hình TELEGRAM_BOT_TOKEN.")
         return False
@@ -64,14 +92,18 @@ def send_telegram_digest(digest: MorningDigest, bot_token: str, chat_id: str) ->
     effective_chat_id = chat_id or _discover_chat_id(bot_token)
     if not effective_chat_id:
         logger.warning(
-            "⚠️ Chưa tìm thấy TELEGRAM_CHAT_ID. Bạn hãy mở link t.me/solly1402_bot trên Telegram và bấm nút 'Start' (hoặc nhắn 'hi') để kích hoạt nhận tin nhé!"
+            "⚠️ Chưa tìm thấy TELEGRAM_CHAT_ID. Bạn hãy mở link t.me/solly1402_bot trên Telegram và bấm 'Start' nhé!"
         )
         return False
+
+    overview_html = html.escape(digest.ai_overview)
+    overview_html = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", overview_html)
 
     header_lines = [
         f"☀️ <b>MORNING PULSE — {html.escape(digest.date_str)}</b>",
         "",
-        f"<b>📌 Tâm điểm sáng nay:</b>\n{html.escape(digest.ai_overview)}",
+        "📌 <b>TÂM ĐIỂM SÁNG NAY</b>",
+        f"<blockquote>{overview_html}</blockquote>",
     ]
     header_block = "\n".join(header_lines)
 
@@ -79,33 +111,23 @@ def send_telegram_digest(digest: MorningDigest, bot_token: str, chat_id: str) ->
     for sec in digest.sections:
         blocks.append(_format_section_html(sec))
 
-    # Gom các block thành các tin nhắn <= MAX_TELEGRAM_LEN ký tự
     messages: List[str] = []
-    current_msg = ""
     for block in blocks:
-        candidate = f"{current_msg}\n\n{'─' * 18}\n\n{block}" if current_msg else block
-        if len(candidate) <= MAX_TELEGRAM_LEN:
-            current_msg = candidate
+        if len(block) <= MAX_TELEGRAM_LEN:
+            messages.append(block)
         else:
-            if current_msg:
-                messages.append(current_msg)
-            # Nếu 1 block đơn lẻ quá dài (> MAX_TELEGRAM_LEN), chia nhỏ theo từng mục tin
-            if len(block) > MAX_TELEGRAM_LEN:
-                chunks = block.split("\n\n")
-                sub_msg = ""
-                for ch in chunks:
-                    cand_sub = f"{sub_msg}\n\n{ch}" if sub_msg else ch
-                    if len(cand_sub) <= MAX_TELEGRAM_LEN:
-                        sub_msg = cand_sub
-                    else:
-                        if sub_msg:
-                            messages.append(sub_msg)
-                        sub_msg = ch[:MAX_TELEGRAM_LEN]
-                current_msg = sub_msg
-            else:
-                current_msg = block
-    if current_msg:
-        messages.append(current_msg)
+            chunks = block.split("\n\n")
+            sub_msg = ""
+            for ch in chunks:
+                cand_sub = f"{sub_msg}\n\n{ch}" if sub_msg else ch
+                if len(cand_sub) <= MAX_TELEGRAM_LEN:
+                    sub_msg = cand_sub
+                else:
+                    if sub_msg:
+                        messages.append(sub_msg)
+                    sub_msg = ch[:MAX_TELEGRAM_LEN]
+            if sub_msg:
+                messages.append(sub_msg)
 
     api_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     success = True

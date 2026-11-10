@@ -23,15 +23,15 @@ sources:
     spoken_language: "" # để trống lấy toàn cầu, hoặc "en", "vi"
     programming_languages:
       - "" # Tất cả ngôn ngữ
-    limit: 6
+    limit: 5
 
   hacker_news:
     enabled: true
-    limit: 6
+    limit: 5
 
   reddit:
     enabled: true
-    limit_per_sub: 3
+    limit_per_sub: 2
     subreddits:
       - "programming"
       - "technology"
@@ -40,7 +40,7 @@ sources:
 
   tech_news:
     enabled: true
-    limit_per_feed: 3
+    limit_per_feed: 2
     feeds:
       - name: "TechCrunch"
         url: "https://techcrunch.com/feed/"
@@ -51,7 +51,7 @@ sources:
 
   football:
     enabled: true
-    limit_per_feed: 4
+    limit_per_feed: 2
     feeds:
       - name: "BBC Sport Football"
         url: "https://feeds.bbci.co.uk/sport/football/rss.xml"
