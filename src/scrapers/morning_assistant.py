@@ -176,8 +176,60 @@ def fetch_market_ticker() -> str:
     return "• " + "  |  ".join(parts)
 
 
+def _fetch_team_recent_form(league: str, team_id: str, count: int = 5) -> str:
+    """Lấy kết quả 5 trận đã đấu gần nhất và chuyển thành chuỗi icon 🟢 (Thắng), 🟡 (Hòa), 🔴 (Thua)."""
+    url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{league}/teams/{team_id}/schedule"
+    try:
+        resp = requests.get(url, timeout=8)
+        if resp.status_code != 200:
+            return ""
+        events = resp.json().get("events") or []
+        completed_icons: List[str] = []
+
+        for ev in events:
+            comp = (ev.get("competitions") or [{}])[0]
+            status_type = comp.get("status", {}).get("type", {})
+            if status_type.get("state") != "post" and not status_type.get("completed"):
+                continue
+
+            competitors = comp.get("competitors") or []
+            if len(competitors) < 2:
+                continue
+
+            my_team = None
+            opp_team = None
+            for c in competitors:
+                if str(c.get("id") or c.get("team", {}).get("id")) == str(team_id):
+                    my_team = c
+                else:
+                    opp_team = c
+
+            if not my_team or not opp_team:
+                continue
+
+            my_score_obj = my_team.get("score", {})
+            opp_score_obj = opp_team.get("score", {})
+            my_score = int(float(my_score_obj.get("value", 0) if isinstance(my_score_obj, dict) else (my_score_obj or 0)))
+            opp_score = int(float(opp_score_obj.get("value", 0) if isinstance(opp_score_obj, dict) else (opp_score_obj or 0)))
+
+            if my_team.get("winner") is True or my_score > opp_score:
+                completed_icons.append("🟢")
+            elif my_score == opp_score:
+                completed_icons.append("🟡")
+            else:
+                completed_icons.append("🔴")
+
+        if not completed_icons:
+            return ""
+        recent = completed_icons[-count:]
+        return " ".join(recent)
+    except Exception as exc:
+        logger.debug("Không thể lấy phong độ 5 trận của team %s: %s", team_id, exc)
+        return ""
+
+
 def fetch_favorite_clubs_radar(teams_cfg: List[Dict[str, Any]] | None = None) -> str:
-    """Radar theo dõi thứ hạng, phong độ và lịch thi đấu sắp tới của các CLB bóng đá yêu thích."""
+    """Radar theo dõi thứ hạng, phong độ 5 trận gần nhất (🟢/🟡/🔴) và lịch thi đấu sắp tới của CLB yêu thích."""
     vn_tz = timezone(timedelta(hours=7))
     target_teams = teams_cfg or DEFAULT_FAVORITE_TEAMS
     lines: List[str] = []
@@ -195,8 +247,7 @@ def fetch_favorite_clubs_radar(teams_cfg: List[Dict[str, Any]] | None = None) ->
                 continue
             team_data = resp.json().get("team", {})
             standing_summary = team_data.get("standingSummary") or ""
-            record_items = team_data.get("record", {}).get("items") or []
-            record_str = record_items[0].get("summary", "") if record_items else ""
+            form_icons = _fetch_team_recent_form(league, team_id, count=5)
 
             next_events = team_data.get("nextEvent") or []
             next_match_str = "Đang chờ lịch vòng tiếp theo"
@@ -215,9 +266,9 @@ def fetch_favorite_clubs_radar(teams_cfg: List[Dict[str, Any]] | None = None) ->
                 next_match_str = f"`{short_name}` ({kickoff_vn})" if kickoff_vn else f"`{short_name}`"
 
             rank_part = f"📊 `{standing_summary}`" if standing_summary else ""
-            rec_part = f" (`{record_str}`)" if record_str else ""
+            form_part = f" | 🔥 5 trận gần nhất: {form_icons}" if form_icons else ""
             lines.append(
-                f"• {emoji} **{name}:** {rank_part}{rec_part} — ⏭️ Trận tới: {next_match_str}"
+                f"• {emoji} **{name}:** {rank_part}{form_part} — ⏭️ Trận tới: {next_match_str}"
             )
         except Exception as exc:
             logger.debug("Không thể lấy Radar đội bóng %s: %s", name, exc)
