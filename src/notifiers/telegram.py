@@ -39,21 +39,25 @@ def _discover_chat_id(bot_token: str) -> str:
 
 
 def _md_to_telegram_html(text: str) -> str:
-    """Chuyển đổi các cú pháp Markdown cơ bản (**bold**, *italic*, `code`, [text](url)) sang HTML cho Telegram."""
+    """Chuyển đổi các cú pháp Markdown (kể cả tiêu đề có [TAG] bên trong link) sang HTML an toàn cho Telegram."""
     escaped = html.escape(text)
+    # 1. Xử lý in đậm **...** và in nghiêng *...* và `code` trước
+    escaped = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", escaped)
+    escaped = re.sub(r"(?<!\*)\*([^\*\n]+?)\*(?!\*)", r"<i>\1</i>", escaped)
+    escaped = re.sub(r"`([^`\n]+?)`", r"<code>\1</code>", escaped)
+    # 2. Xử lý link Markdown [text có thể chứa [TAG]](url)
     escaped = re.sub(
-        r"\[([^\]]+)\]\((https?://[^\)]+)\)",
-        r'<a href="\2"><b>\1</b></a>',
+        r"\[((?:\[[^\]]*\]|[^\]])+)\]\((https?://[^\)\s]+)\)",
+        r'<a href="\2">\1</a>',
         escaped,
     )
-    escaped = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", escaped)
-    escaped = re.sub(r"\*(.+?)\*", r"<i>\1</i>", escaped)
-    escaped = re.sub(r"`(.+?)`", r"<code>\1</code>", escaped)
     return escaped
 
 
 def _format_summary_html(summary: str) -> str:
-    escaped = html.escape(summary)
+    # Loại bỏ dòng trống kép bên trong summary để giữ nguyên khối blockquote
+    clean_lines = [line.strip() for line in summary.splitlines() if line.strip()]
+    escaped = html.escape("\n".join(clean_lines))
     escaped = re.sub(
         r"(•\s*📌\s*Cốt lõi:|•\s*🔍\s*Chi tiết:|•\s*🗣️\s*Góc nhìn &amp; Tranh luận:|•\s*💡\s*Đáng chú ý:)",
         r"<b>\1</b>",
@@ -62,16 +66,18 @@ def _format_summary_html(summary: str) -> str:
     return f"<blockquote>{escaped}</blockquote>"
 
 
-def _format_section_html(sec: DigestSection) -> str:
-    lines = [
+def _build_section_messages(sec: DigestSection) -> List[str]:
+    """Chia chuyên mục thành các tin nhắn Telegram hoàn chỉnh, không bao giờ cắt ngang thẻ HTML."""
+    header_lines = [
         "━━━━━━━━━━━━━━━━━━━━",
         f"{sec.emoji} <b>{html.escape(sec.title.upper())}</b>",
         "━━━━━━━━━━━━━━━━━━━━",
     ]
     if sec.ai_commentary:
-        lines.append(f"💡 <i>{html.escape(sec.ai_commentary)}</i>")
-    lines.append("")
+        header_lines.append(f"💡 <i>{html.escape(sec.ai_commentary)}</i>")
+    header_str = "\n".join(header_lines)
 
+    item_blocks: List[str] = []
     for idx, item in enumerate(sec.items, 1):
         badge = _num_badge(idx)
         title_escaped = html.escape(item.title)
@@ -87,14 +93,26 @@ def _format_section_html(sec: DigestSection) -> str:
             comm_escaped = html.escape(item.comments_url, quote=True)
             meta_parts.append(f"<a href=\"{comm_escaped}\">💬 Thảo luận</a>")
 
-        lines.append(f"{badge} <a href=\"{url_escaped}\"><b>{title_escaped}</b></a>")
+        b_lines = [f"{badge} <a href=\"{url_escaped}\"><b>{title_escaped}</b></a>"]
         if meta_parts:
-            lines.append("🏷️ " + " • ".join(meta_parts))
+            b_lines.append("🏷️ " + " • ".join(meta_parts))
         if item.summary:
-            lines.append(_format_summary_html(item.summary))
-        lines.append("")
+            b_lines.append(_format_summary_html(item.summary))
+        item_blocks.append("\n".join(b_lines))
 
-    return "\n".join(lines).strip()
+    messages: List[str] = []
+    current_msg = header_str
+    for ib in item_blocks:
+        candidate = f"{current_msg}\n\n{ib}"
+        if len(candidate) <= MAX_TELEGRAM_LEN:
+            current_msg = candidate
+        else:
+            messages.append(current_msg)
+            current_msg = f"<b>{sec.emoji} {html.escape(sec.title.upper())} (tiếp)</b>\n\n{ib}"
+    if current_msg:
+        messages.append(current_msg)
+
+    return messages
 
 
 def _build_header_html(digest: MorningDigest) -> str:
@@ -112,7 +130,7 @@ def _build_header_html(digest: MorningDigest) -> str:
         if digest.market_ticker:
             assistant_parts.append("<b>💰 Nhịp đập thị trường:</b>\n" + _md_to_telegram_html(digest.market_ticker))
         if digest.football_fixtures:
-            assistant_parts.append("<b>⚽ Lịch &amp; Kết quả bóng đá tâm điểm:</b>\n" + _md_to_telegram_html(digest.football_fixtures))
+            assistant_parts.append(_md_to_telegram_html(digest.football_fixtures))
         header_lines.append("<blockquote>" + "\n\n".join(assistant_parts) + "</blockquote>")
         header_lines.append("")
 
@@ -180,33 +198,13 @@ def send_telegram_digest(digest: MorningDigest, bot_token: str, chat_id: str) ->
         )
         return False
 
-    header_block = _build_header_html(digest)
-
-    blocks: List[str] = [header_block]
+    messages: List[str] = [_build_header_html(digest)]
     for sec in digest.sections:
-        blocks.append(_format_section_html(sec))
+        messages.extend(_build_section_messages(sec))
 
     learning_block = _build_learning_html(digest)
     if learning_block:
-        blocks.append(learning_block)
-
-    messages: List[str] = []
-    for block in blocks:
-        if len(block) <= MAX_TELEGRAM_LEN:
-            messages.append(block)
-        else:
-            chunks = block.split("\n\n")
-            sub_msg = ""
-            for ch in chunks:
-                cand_sub = f"{sub_msg}\n\n{ch}" if sub_msg else ch
-                if len(cand_sub) <= MAX_TELEGRAM_LEN:
-                    sub_msg = cand_sub
-                else:
-                    if sub_msg:
-                        messages.append(sub_msg)
-                    sub_msg = ch[:MAX_TELEGRAM_LEN]
-            if sub_msg:
-                messages.append(sub_msg)
+        messages.append(learning_block)
 
     messages.append(_build_closing_html(digest))
 
@@ -236,7 +234,7 @@ def send_telegram_digest(digest: MorningDigest, bot_token: str, chat_id: str) ->
                 break
             except Exception as exc:
                 if attempt == 2:
-                    logger.error("Lỗi khi gửi tin nhắn Telegram: %s", exc)
+                    logger.error("Lỗi khi gửi tin nhắn Telegram (msg %d): %s", idx + 1, exc)
         if not sent:
             success = False
 
@@ -256,5 +254,5 @@ def send_telegram_digest(digest: MorningDigest, bot_token: str, chat_id: str) ->
             logger.debug("Không thể ghim tin nhắn Telegram: %s", exc)
 
     if success:
-        logger.info("Đã gửi thành công bản tin + Góc nâng tầm + vạch phân chia cuối ngày qua Telegram.")
+        logger.info("Đã gửi thành công bản tin + Góc nâng tầm + vạch phân chia cuối ngày qua Telegram (%d tin nhắn).", len(messages))
     return success
