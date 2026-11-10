@@ -183,7 +183,6 @@ def send_telegram_digest(digest: MorningDigest, bot_token: str, chat_id: str) ->
     messages.append(_build_closing_html(digest))
 
     api_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    audio_url = f"https://api.telegram.org/bot{bot_token}/sendAudio"
     pin_url = f"https://api.telegram.org/bot{bot_token}/pinChatMessage"
     success = True
     first_message_id: int | None = None
@@ -212,26 +211,6 @@ def send_telegram_digest(digest: MorningDigest, bot_token: str, chat_id: str) ->
                     logger.error("Lỗi khi gửi tin nhắn Telegram: %s", exc)
         if not sent:
             success = False
-
-        # Ngay sau tin nhắn Mở đầu (idx == 0), gửi file Audio MP3 phát thanh buổi sáng
-        if idx == 0 and digest.audio_path and digest.audio_path.exists():
-            try:
-                with open(digest.audio_path, "rb") as af:
-                    requests.post(
-                        audio_url,
-                        data={
-                            "chat_id": effective_chat_id,
-                            "title": f"Bản Tin Phát Thanh Sáng {digest.date_str}",
-                            "performer": "Morning Pulse AI Radio ☕",
-                            "caption": f"🎧 <b>Bản tin phát thanh buổi sáng ({digest.date_str})</b> — Bấm Play để nghe điểm tin trong 2 phút!",
-                            "parse_mode": "HTML",
-                        },
-                        files={"audio": (digest.audio_path.name, af, "audio/mpeg")},
-                        timeout=45,
-                    )
-                logger.info("🎧 Đã gửi file Audio phát thanh qua Telegram.")
-            except Exception as exc:
-                logger.warning("Không thể gửi file Audio qua Telegram: %s", exc)
 
     if first_message_id:
         try:

@@ -6,7 +6,6 @@ from typing import List
 
 from src.config import BASE_DIR, load_config
 from src.models import NewsItem
-from src.notifiers.audio_podcast import generate_morning_audio
 from src.notifiers.discord import send_discord_digest
 from src.notifiers.markdown_archive import save_markdown_digest
 from src.notifiers.telegram import send_telegram_digest
@@ -106,9 +105,6 @@ def main() -> int:
     logger.info("🌤️ Đang lấy thông tin thời tiết & lịch thi đấu bóng đá hôm nay...")
     digest.weather_summary = fetch_weather_summary()
     digest.football_fixtures = fetch_upcoming_football_matches()
-
-    # Tạo file Audio MP3 phát thanh buổi sáng (2-3 phút)
-    digest.audio_path = generate_morning_audio(digest, base_dir=BASE_DIR)
 
     outputs_cfg = cfg.get("outputs", {})
     secrets = cfg.get("secrets", {})

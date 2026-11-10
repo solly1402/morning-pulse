@@ -145,7 +145,7 @@ def _build_overview_embed(
         "title": f"☀️ BẮT ĐẦU BẢN TIN SÁNG — {digest.date_str}",
         "description": desc,
         "color": 0xF59E0B,
-        "footer": {"text": f"🌅 Điểm bắt đầu bản tin ngày {digest.date_str} • Bấm Play file MP3 phía trên để nghe phát thanh!"},
+        "footer": {"text": f"🌅 Điểm bắt đầu bản tin ngày {digest.date_str}"},
     }
 
 
@@ -214,26 +214,16 @@ def send_discord_digest(digest: MorningDigest, webhook_url: str) -> bool:
     jump_url: str | None = None
     section_jump_links: List[str] = []
 
-    # 1. Gửi thẻ Mở đầu (Hero Overview Card) + Đính kèm file Audio MP3 phát thanh buổi sáng
+    # 1. Gửi thẻ Mở đầu (Hero Overview Card)
     overview_embed = _build_overview_embed(digest)
     hero_payload = {
         "username": "Morning Pulse ☕",
-        "content": f"🌅 **`══════════ ☀️ BẮT ĐẦU BẢN TIN SÁNG {digest.date_str} ☀️ ══════════`**\n🎧 *Bấm **Play ▶** bên dưới để nghe phát thanh điểm tin buổi sáng trong lúc pha cà phê nhé!*",
+        "content": f"🌅 **`══════════ ☀️ BẮT ĐẦU BẢN TIN SÁNG {digest.date_str} ☀️ ══════════`**",
         "embeds": [overview_embed],
     }
 
     try:
-        post_url = f"{webhook_url}?wait=true"
-        if digest.audio_path and digest.audio_path.exists():
-            with open(digest.audio_path, "rb") as audio_file:
-                resp = requests.post(
-                    post_url,
-                    data={"payload_json": json.dumps(hero_payload)},
-                    files={"file": (digest.audio_path.name, audio_file, "audio/mpeg")},
-                    timeout=35,
-                )
-        else:
-            resp = requests.post(post_url, json=hero_payload, timeout=25)
+        resp = requests.post(f"{webhook_url}?wait=true", json=hero_payload, timeout=25)
         resp.raise_for_status()
         msg_data = resp.json()
         first_msg_id = msg_data.get("id")

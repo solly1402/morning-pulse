@@ -27,14 +27,6 @@ def render_digest_markdown(digest: MorningDigest) -> str:
         "",
     ]
 
-    if digest.audio_path and digest.audio_path.exists():
-        lines.extend(
-            [
-                f"🎧 **[Nghe Bản Tin Phát Thanh Buổi Sáng (MP3)](./audio/{digest.audio_path.name})**",
-                "",
-            ]
-        )
-
     if digest.weather_summary or digest.football_fixtures:
         lines.extend(["## 🌤️ Trợ Lý Đầu Ngày", ""])
         if digest.weather_summary:
@@ -116,9 +108,7 @@ def save_markdown_digest(digest: MorningDigest, base_dir: Path, rel_dir: str = "
     ]
     for p in digest_files:
         date_label = p.stem
-        audio_candidate = out_dir / "audio" / f"morning-pulse-{date_label}.mp3"
-        audio_badge = f" · [🎧 Audio MP3](./audio/morning-pulse-{date_label}.mp3)" if audio_candidate.exists() else ""
-        index_lines.append(f"- 📅 **[{date_label}](./{p.name})**{audio_badge}")
+        index_lines.append(f"- 📅 **[{date_label}](./{p.name})**")
 
     index_path = out_dir / "README.md"
     index_path.write_text("\n".join(index_lines) + "\n", encoding="utf-8")

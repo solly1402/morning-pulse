@@ -28,6 +28,7 @@ WMO_WEATHER_CODES = {
 }
 
 DEFAULT_CITIES = [
+    {"name": "Biên Hoà, Đồng Nai", "lat": 10.9447, "lon": 106.8243},
     {"name": "TP.HCM", "lat": 10.8231, "lon": 106.6297},
     {"name": "Hà Nội", "lat": 21.0285, "lon": 105.8542},
 ]

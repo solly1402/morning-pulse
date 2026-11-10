@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import List, Optional
 
 
@@ -40,5 +39,3 @@ class MorningDigest:
     top_highlights: List[str] = field(default_factory=list)  # Top 3 tin không thể bỏ lỡ (đọc lướt 30s)
     weather_summary: str = ""  # Dự báo thời tiết trong ngày
     football_fixtures: str = ""  # Lịch thi đấu & kết quả các trận cầu tâm điểm hôm nay
-    radio_script: str = ""  # Kịch bản phát thanh buổi sáng
-    audio_path: Optional[Path] = None  # Đường dẫn file MP3 phát thanh buổi sáng
