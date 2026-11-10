@@ -106,7 +106,8 @@ def main() -> int:
     logger.info("🌤️ Đang lấy thông tin thời tiết, tỷ giá thị trường & lịch thi đấu bóng đá hôm nay...")
     digest.weather_summary = fetch_weather_summary()
     digest.market_ticker = fetch_market_ticker()
-    digest.football_fixtures = fetch_upcoming_football_matches()
+    fav_teams = cfg.get("sources", {}).get("football", {}).get("favorite_teams")
+    digest.football_fixtures = fetch_upcoming_football_matches(favorite_teams=fav_teams)
 
     outputs_cfg = cfg.get("outputs", {})
     secrets = cfg.get("secrets", {})

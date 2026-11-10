@@ -4,6 +4,8 @@ from typing import Any, Dict, List
 
 import requests
 
+from src.scrapers.lunar_vn import format_vietnamese_date_and_lunar
+
 logger = logging.getLogger(__name__)
 
 WMO_WEATHER_CODES = {
@@ -42,12 +44,50 @@ FOOTBALL_LEAGUES = [
     ("Europa League", "uefa.europa"),
 ]
 
+# Danh sách CLB bóng đá mặc định cho "Radar Đội Bóng Ruột" (có thể tùy chỉnh trong config.yaml)
+DEFAULT_FAVORITE_TEAMS = [
+    {"name": "Manchester United", "league": "eng.1", "team_id": "360", "emoji": "👹"},
+    {"name": "Real Madrid", "league": "esp.1", "team_id": "86", "emoji": "👑"},
+    {"name": "Arsenal", "league": "eng.1", "team_id": "359", "emoji": "🔫"},
+    {"name": "Barcelona", "league": "esp.1", "team_id": "83", "emoji": "🔵🔴"},
+]
+
+
+def _fetch_city_aqi(lat: float, lon: float) -> tuple[int, float, str]:
+    """Lấy chỉ số chất lượng không khí (US AQI) và bụi mịn PM2.5 từ Open-Meteo Air Quality API."""
+    url = (
+        f"https://air-quality-api.open-meteo.com/v1/air-quality"
+        f"?latitude={lat}&longitude={lon}&current=us_aqi,pm2_5"
+    )
+    try:
+        resp = requests.get(url, timeout=8)
+        if resp.status_code == 200:
+            curr = resp.json().get("current", {})
+            aqi = int(round(curr.get("us_aqi") or 0))
+            pm25 = round(float(curr.get("pm2_5") or 0.0), 1)
+            if aqi <= 50:
+                badge = f"🟢 AQI `{aqi}` (Trong lành)"
+            elif aqi <= 100:
+                badge = f"🟡 AQI `{aqi}` (TB)"
+            elif aqi <= 150:
+                badge = f"🟠 AQI `{aqi}` (Kém - Nên đeo khẩu trang)"
+            else:
+                badge = f"🔴 AQI `{aqi}` (Ô nhiễm)"
+            return aqi, pm25, badge
+    except Exception:
+        pass
+    return 0, 0.0, ""
+
 
 def fetch_weather_summary(cities: List[Dict[str, Any]] | None = None) -> str:
-    """Lấy dự báo thời tiết trong ngày từ Open-Meteo API (Miễn phí, không cần API key)."""
+    """Lấy Lịch Âm Việt Nam + Dự báo thời tiết + Chỉ số bụi mịn AQI cho Biên Hoà, TP.HCM, Hà Nội."""
+    vn_tz = timezone(timedelta(hours=7))
+    now_vn = datetime.now(vn_tz)
+
     target_cities = cities or DEFAULT_CITIES
-    lines: List[str] = []
+    lines: List[str] = [format_vietnamese_date_and_lunar(now_vn)]
     max_rain_prob = 0
+    max_aqi = 0
 
     for city in target_cities:
         name = city.get("name", "Biên Hoà, Đồng Nai")
@@ -68,23 +108,28 @@ def fetch_weather_summary(cities: List[Dict[str, Any]] | None = None) -> str:
             rain_prob = int((daily.get("precipitation_probability_max") or [0])[0] or 0)
             uv_max = round((daily.get("uv_index_max") or [6])[0], 1)
 
+            aqi_val, _, aqi_badge = _fetch_city_aqi(lat, lon)
             max_rain_prob = max(max_rain_prob, rain_prob)
+            max_aqi = max(max_aqi, aqi_val)
+
             desc = WMO_WEATHER_CODES.get(w_code, "🌤️ Thời tiết ổn định")
+            aqi_str = f" | 😷 {aqi_badge}" if aqi_badge else ""
             lines.append(
-                f"• **{name}:** {desc} | 🌡️ `{t_min}°C – {t_max}°C` | ☔ Mưa: `{rain_prob}%` | ☀️ UV: `{uv_max}`"
+                f"• **{name}:** {desc} | 🌡️ `{t_min}°C – {t_max}°C` | ☔ Mưa: `{rain_prob}%` | ☀️ UV: `{uv_max}`{aqi_str}"
             )
         except Exception as exc:
             logger.debug("Lỗi lấy thời tiết cho %s: %s", name, exc)
 
-    if not lines:
-        return ""
-
+    tips = []
     if max_rain_prob >= 60:
-        lines.append("💡 *Nhắc nhẹ: Khả năng mưa hôm nay khá cao, bạn nhớ mang theo áo mưa hoặc ô khi ra ngoài nhé!*")
+        tips.append("Khả năng mưa cao, nhớ mang theo áo mưa/ô")
     elif max_rain_prob >= 35:
-        lines.append("💡 *Nhắc nhẹ: Chiều tối có thể có mưa rào nhẹ rải rác, nên thủ sẵn áo mưa trong cốp xe.*")
-    else:
-        lines.append("💡 *Nhắc nhẹ: Thời tiết hôm nay khá thuận lợi cho việc di chuyển và làm việc ngoài trời!*")
+        tips.append("Chiều tối có thể mưa rào nhẹ, nên thủ sẵn áo mưa")
+    if max_aqi > 100:
+        tips.append("bụi mịn khá cao, nhớ đeo khẩu trang khi ra đường")
+
+    if tips:
+        lines.append(f"💡 *Nhắc nhẹ: {'; '.join(tips)} nhé!*")
 
     return "\n".join(lines)
 
@@ -93,7 +138,6 @@ def fetch_market_ticker() -> str:
     """Lấy nhanh tỷ giá USD/VND, Giá Vàng Thế Giới (XAU/PAXG) và Bitcoin (BTC), Ethereum (ETH) sáng nay."""
     parts: List[str] = []
 
-    # 1. Tỷ giá USD/VND
     try:
         resp_fx = requests.get("https://open.er-api.com/v6/latest/USD", timeout=8)
         if resp_fx.status_code == 200:
@@ -103,11 +147,10 @@ def fetch_market_ticker() -> str:
     except Exception as exc:
         logger.debug("Không thể lấy tỷ giá USD/VND: %s", exc)
 
-    # 2. Giá Vàng thế giới (PAXG/USD ~ 1 Oz Vàng), Bitcoin (BTC) & Ethereum (ETH)
     label_map = {
-        "PAXGUSDT": ("🪙 **Vàng (XAU):**", "$", 0),
-        "BTCUSDT": ("₿ **BTC:**", "$", 0),
-        "ETHUSDT": ("Ξ **ETH:**", "$", 0),
+        "PAXGUSDT": ("🪙 **Vàng (XAU):**", "$", "/oz"),
+        "BTCUSDT": ("₿ **BTC:**", "$", ""),
+        "ETHUSDT": ("Ξ **ETH:**", "$", ""),
     }
     try:
         resp_crypto = requests.get(
@@ -121,12 +164,11 @@ def fetch_market_ticker() -> str:
                 info = data_map.get(sym)
                 if not info:
                     continue
-                label, prefix, _ = label_map[sym]
+                label, prefix, unit = label_map[sym]
                 price = float(info.get("lastPrice", 0))
                 chg = float(info.get("priceChangePercent", 0))
                 arrow = "📈" if chg >= 0 else "📉"
                 sign = "+" if chg >= 0 else ""
-                unit = "/oz" if sym == "PAXGUSDT" else ""
                 parts.append(f"{label} `{prefix}{int(round(price)):,}{unit}` ({arrow} `{sign}{chg:.1f}%`)")
     except Exception as exc:
         logger.debug("Không thể lấy dữ liệu thị trường: %s", exc)
@@ -136,13 +178,73 @@ def fetch_market_ticker() -> str:
     return "• " + "  |  ".join(parts)
 
 
-def fetch_upcoming_football_matches(max_matches: int = 6) -> str:
-    """Lấy lịch thi đấu và kết quả các trận cầu tâm điểm hôm nay/đêm nay theo giờ Việt Nam (GMT+7)."""
+def fetch_favorite_clubs_radar(teams_cfg: List[Dict[str, Any]] | None = None) -> str:
+    """Radar theo dõi thứ hạng, phong độ và lịch thi đấu sắp tới của các CLB bóng đá yêu thích."""
+    vn_tz = timezone(timedelta(hours=7))
+    target_teams = teams_cfg or DEFAULT_FAVORITE_TEAMS
+    lines: List[str] = []
+
+    for t in target_teams:
+        name = t.get("name", "Man Utd")
+        league = t.get("league", "eng.1")
+        team_id = str(t.get("team_id", "360"))
+        emoji = t.get("emoji", "⚽")
+
+        try:
+            url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{league}/teams/{team_id}"
+            resp = requests.get(url, timeout=8)
+            if resp.status_code != 200:
+                continue
+            team_data = resp.json().get("team", {})
+            standing_summary = team_data.get("standingSummary") or ""
+            record_items = team_data.get("record", {}).get("items") or []
+            record_str = record_items[0].get("summary", "") if record_items else ""
+
+            next_events = team_data.get("nextEvent") or []
+            next_match_str = "Đang chờ lịch vòng tiếp theo"
+            if next_events:
+                ev = next_events[0]
+                short_name = ev.get("shortName", "")
+                date_iso = ev.get("date", "")
+                kickoff_vn = ""
+                if date_iso:
+                    try:
+                        dt_utc = datetime.fromisoformat(date_iso.replace("Z", "+00:00"))
+                        dt_vn = dt_utc.astimezone(vn_tz)
+                        kickoff_vn = dt_vn.strftime("%H:%M ngày %d/%m")
+                    except Exception:
+                        pass
+                next_match_str = f"`{short_name}` ({kickoff_vn})" if kickoff_vn else f"`{short_name}`"
+
+            rank_part = f"📊 `{standing_summary}`" if standing_summary else ""
+            rec_part = f" (`{record_str}`)" if record_str else ""
+            lines.append(
+                f"• {emoji} **{name}:** {rank_part}{rec_part} — ⏭️ Trận tới: {next_match_str}"
+            )
+        except Exception as exc:
+            logger.debug("Không thể lấy Radar đội bóng %s: %s", name, exc)
+
+    return "\n".join(lines)
+
+
+def fetch_upcoming_football_matches(
+    max_matches: int = 5,
+    favorite_teams: List[Dict[str, Any]] | None = None,
+) -> str:
+    """Kết hợp Radar Đội Bóng Ruột + Lịch thi đấu các trận cầu tâm điểm hôm nay theo giờ Việt Nam (GMT+7)."""
     vn_tz = timezone(timedelta(hours=7))
     now_vn = datetime.now(vn_tz)
     date_param = now_vn.strftime("%Y%m%d")
     tomorrow_param = (now_vn + timedelta(days=1)).strftime("%Y%m%d")
 
+    output_blocks: List[str] = []
+
+    # 1. Radar Đội bóng ruột
+    club_radar = fetch_favorite_clubs_radar(favorite_teams)
+    if club_radar:
+        output_blocks.append("⭐ **Radar Đội Bóng Yêu Thích:**\n" + club_radar)
+
+    # 2. Các trận đấu diễn ra trong 24h tới
     matches: List[str] = []
     for league_name, league_code in FOOTBALL_LEAGUES:
         url = (
@@ -150,7 +252,7 @@ def fetch_upcoming_football_matches(max_matches: int = 6) -> str:
             f"?dates={date_param}-{tomorrow_param}"
         )
         try:
-            resp = requests.get(url, timeout=10)
+            resp = requests.get(url, timeout=8)
             if resp.status_code != 200:
                 continue
             events = resp.json().get("events") or []
@@ -194,6 +296,7 @@ def fetch_upcoming_football_matches(max_matches: int = 6) -> str:
         if len(matches) >= max_matches:
             break
 
-    if not matches:
-        return "• ⚽ *Hôm nay các giải VĐQG châu Âu đang tạm nghỉ giữa tuần/nhường chỗ cho loạt trận tiếp theo.*"
-    return "\n".join(matches)
+    if matches:
+        output_blocks.append("🗓️ **Lịch & Kết quả trong ngày:**\n" + "\n".join(matches))
+
+    return "\n\n".join(output_blocks)

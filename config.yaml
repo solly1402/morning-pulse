@@ -52,6 +52,23 @@ sources:
   football:
     enabled: true
     limit_per_feed: 2
+    favorite_teams:
+      - name: "Manchester United"
+        league: "eng.1"
+        team_id: "360"
+        emoji: "👹"
+      - name: "Real Madrid"
+        league: "esp.1"
+        team_id: "86"
+        emoji: "👑"
+      - name: "Arsenal"
+        league: "eng.1"
+        team_id: "359"
+        emoji: "🔫"
+      - name: "Barcelona"
+        league: "esp.1"
+        team_id: "83"
+        emoji: "🔵🔴"
     feeds:
       - name: "BBC Sport Football"
         url: "https://feeds.bbci.co.uk/sport/football/rss.xml"
