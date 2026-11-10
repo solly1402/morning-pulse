@@ -55,7 +55,7 @@ def _md_to_telegram_html(text: str) -> str:
 def _format_summary_html(summary: str) -> str:
     escaped = html.escape(summary)
     escaped = re.sub(
-        r"(•\s*📌\s*Cốt lõi:|•\s*🔍\s*Chi tiết:|•\s*💡\s*Đáng chú ý:)",
+        r"(•\s*📌\s*Cốt lõi:|•\s*🔍\s*Chi tiết:|•\s*🗣️\s*Góc nhìn &amp; Tranh luận:|•\s*💡\s*Đáng chú ý:)",
         r"<b>\1</b>",
         escaped,
     )
@@ -104,13 +104,15 @@ def _build_header_html(digest: MorningDigest) -> str:
         "╚════════════════════════════════════╝</pre>",
     ]
 
-    if digest.weather_summary or digest.football_fixtures:
-        header_lines.append("🌤️ <b>TRỢ LÝ ĐẦU NGÀY</b>")
+    if digest.weather_summary or digest.market_ticker or digest.football_fixtures:
+        header_lines.append("🌤️ <b>TRỢ LÝ ĐẦU NGÀY &amp; THỊ TRƯỜNG</b>")
         assistant_parts: List[str] = []
         if digest.weather_summary:
             assistant_parts.append(_md_to_telegram_html(digest.weather_summary))
+        if digest.market_ticker:
+            assistant_parts.append("<b>💰 Nhịp đập thị trường:</b>\n" + _md_to_telegram_html(digest.market_ticker))
         if digest.football_fixtures:
-            assistant_parts.append("<b>⚽ Lịch & Kết quả bóng đá tâm điểm:</b>\n" + _md_to_telegram_html(digest.football_fixtures))
+            assistant_parts.append("<b>⚽ Lịch &amp; Kết quả bóng đá tâm điểm:</b>\n" + _md_to_telegram_html(digest.football_fixtures))
         header_lines.append("<blockquote>" + "\n\n".join(assistant_parts) + "</blockquote>")
         header_lines.append("")
 
@@ -127,6 +129,28 @@ def _build_header_html(digest: MorningDigest) -> str:
     return "\n".join(header_lines)
 
 
+def _build_learning_html(digest: MorningDigest) -> str:
+    if not digest.concept_of_the_day and not digest.daily_vocab:
+        return ""
+
+    lines = [
+        "━━━━━━━━━━━━━━━━━━━━",
+        "🧠 <b>GÓC NÂNG TẦM MỖI SÁNG</b>",
+        "━━━━━━━━━━━━━━━━━━━━",
+    ]
+    if digest.concept_of_the_day:
+        lines.append("💡 <b>Mỗi sáng 1 Kiến thức đắt giá:</b>")
+        lines.append(f"<blockquote>{_md_to_telegram_html(digest.concept_of_the_day)}</blockquote>")
+        lines.append("")
+
+    if digest.daily_vocab:
+        lines.append("🇬🇧 <b>3 Thuật ngữ Tiếng Anh chuyên ngành trong ngày:</b>")
+        vocab_html = "\n\n".join(f"• {_md_to_telegram_html(v)}" for v in digest.daily_vocab)
+        lines.append(f"<blockquote>{vocab_html}</blockquote>")
+
+    return "\n".join(lines).strip()
+
+
 def _build_closing_html(digest: MorningDigest) -> str:
     total_items = sum(len(s.items) for s in digest.sections)
     date_esc = html.escape(digest.date_str)
@@ -136,7 +160,7 @@ def _build_closing_html(digest: MorningDigest) -> str:
         "╚════════════════════════════════════╝</pre>",
         f"✅ <b>Đã cập nhật xong {total_items} tin tức sáng {date_esc}!</b>",
         f"📚 <a href=\"https://github.com/solly1402/morning-pulse/blob/main/digests/{date_esc}.md\">Xem lưu trữ đầy đủ trên GitHub</a>",
-        "📌 <i>Mẹo: Bấm vào thanh <b>Tin nhắn đã ghim (Pinned Message)</b> ở góc trên cùng màn hình để nhảy thẳng về đầu bản tin sáng nay (kèm file Audio phát thanh) mà không cần lướt tìm!</i>",
+        "📌 <i>Mẹo: Bấm vào thanh <b>Tin nhắn đã ghim (Pinned Message)</b> ở góc trên cùng màn hình để nhảy thẳng về đầu bản tin sáng nay mà không cần lướt tìm!</i>",
         "☕ <i>Chúc bạn một ngày làm việc hiệu quả! Hẹn gặp lại vào 05:45 sáng mai.</i>",
         "██████████████████████████████",
     ]
@@ -144,7 +168,7 @@ def _build_closing_html(digest: MorningDigest) -> str:
 
 
 def send_telegram_digest(digest: MorningDigest, bot_token: str, chat_id: str) -> bool:
-    """Gửi bản tin buổi sáng qua Telegram Bot, đính kèm Audio Podcast MP3, ghim tin mở đầu và gửi vạch kết thúc ngày."""
+    """Gửi bản tin buổi sáng qua Telegram Bot, ghim tin mở đầu, kèm Góc học tập và gửi vạch kết thúc ngày."""
     if not bot_token:
         logger.info("Bỏ qua Telegram: Chưa cấu hình TELEGRAM_BOT_TOKEN.")
         return False
@@ -161,6 +185,10 @@ def send_telegram_digest(digest: MorningDigest, bot_token: str, chat_id: str) ->
     blocks: List[str] = [header_block]
     for sec in digest.sections:
         blocks.append(_format_section_html(sec))
+
+    learning_block = _build_learning_html(digest)
+    if learning_block:
+        blocks.append(learning_block)
 
     messages: List[str] = []
     for block in blocks:
@@ -228,5 +256,5 @@ def send_telegram_digest(digest: MorningDigest, bot_token: str, chat_id: str) ->
             logger.debug("Không thể ghim tin nhắn Telegram: %s", exc)
 
     if success:
-        logger.info("Đã gửi thành công bản tin + Audio + vạch phân chia cuối ngày qua Telegram.")
+        logger.info("Đã gửi thành công bản tin + Góc nâng tầm + vạch phân chia cuối ngày qua Telegram.")
     return success

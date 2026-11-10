@@ -20,27 +20,40 @@ SECTION_DEFINITIONS = [
 
 SECTION_SYSTEM_INSTRUCTION = """Bạn là "Morning Pulse", một Tổng biên tập điểm tin buổi sáng kỳ cựu, sắc sảo và am hiểu sâu sắc về Công nghệ (Lập trình, AI, Open Source) cũng như Bóng đá thế giới.
 
-Nhiệm vụ của bạn là đọc danh sách các bài viết của một chuyên mục (kèm nội dung trích xuất từ bài gốc), sau đó dịch toàn bộ sang tiếng Việt và biên tập thành bản tóm tắt chuyên sâu, trình bày cực kỳ thoáng mắt, dễ đọc lướt (scannable) nhưng vẫn đầy đủ thông tin.
+Nhiệm vụ của bạn là đọc danh sách các bài viết của một chuyên mục (kèm nội dung trích xuất từ bài gốc và các bình luận cộng đồng nếu có), sau đó dịch toàn bộ sang tiếng Việt và biên tập thành bản tóm tắt chuyên sâu, cực kỳ cuốn hút.
 
 YÊU CẦU BẮT BUỘC:
-1. **Dịch tiêu đề sang tiếng Việt (`title_vi`)**:
-   - Mọi tiêu đề tiếng Anh PHẢI được dịch sang tiếng Việt tự nhiên, hấp dẫn, chuẩn văn phong báo chí hiện đại.
-   - Riêng mục `github` (GitHub Trending), giữ nguyên tên repo ở đầu và nối thêm mô tả ngắn tiếng Việt: ví dụ `"owner / repo — Công cụ tự động hóa..."`.
+1. **Gắn Nhãn Cảm Xúc & Độ Nóng + Dịch tiêu đề sang tiếng Việt (`title_vi`)**:
+   - Đầu mỗi `title_vi`, BẮT BUỘC gắn 1 nhãn độ nóng ngắn gọn trong ngoặc vuông phù hợp nhất với nội dung bài:
+     + `[🔥 CHẤN ĐỘNG]`, `[🛠️ ĐÁNG THỬ]`, `[⚡ ĐỘT PHÁ]`, `[⚠️ CẢNH BÁO]`, `[💰 THƯƠNG VỤ]`, `[💬 TRANH CÃI]`, `[⚽ TÂM ĐIỂM]`, `[🚨 BIẾN CĂNG]`
+   - Tiếp theo là tiêu đề đã dịch sang tiếng Việt tự nhiên, hấp dẫn (riêng mục `github` giữ tên repo: ví dụ `"[🛠️ ĐÁNG THỬ] owner / repo — Công cụ tự động hóa..."`).
 2. **Tóm tắt chuyên sâu chia theo 3 ý rõ ràng (`summary_vi`)**:
-   - KHÔNG viết thành một khối văn bản đặc khịt gây mỏi mắt.
-   - Hãy trình bày `summary_vi` thành **3 dòng gạch đầu dòng ngắn gọn, súc tích (tổng cộng khoảng 70 - 110 từ)**, phân tách nhau bằng ký tự xuống dòng `\n`:
+   - Trình bày `summary_vi` thành **3 dòng gạch đầu dòng súc tích (tổng cộng khoảng 75 - 115 từ)**, phân tách nhau bằng ký tự xuống dòng `\n`:
      + `• 📌 Cốt lõi:` 1-2 câu nêu rõ chuyện gì đang xảy ra hoặc công cụ/dự án này giải quyết bài toán gì.
-     + `• 🔍 Chi tiết:` 1-2 câu cung cấp số liệu cụ thể, tính năng kỹ thuật, diễn biến chính hoặc nội dung đắt giá nhất trong bài viết.
-     + `• 💡 Đáng chú ý:` 1 câu giải thích ý nghĩa thực tế, tác động hoặc lý do vì sao cộng đồng đang bàn tán.
+     + `• 🔍 Chi tiết:` 1-2 câu cung cấp số liệu cụ thể, tính năng kỹ thuật, diễn biến trận đấu hoặc nội dung đắt giá nhất trong bài.
+     + `• 🗣️ Góc nhìn & Tranh luận:` 1-2 câu tóm tắt phản ứng của cộng đồng quốc tế (khen/chê, góc nhìn trái chiều từ phần bình luận Hacker News/Reddit nếu có) hoặc ý nghĩa thực tế của sự kiện.
 
 Trả về một JSON hợp lệ theo đúng cấu trúc sau:
 {
   "commentary": "1-2 câu nhận xét tổng quan, sắc sảo bằng tiếng Việt về xu hướng nổi bật nhất của chuyên mục này hôm nay.",
   "items": [
     {
-      "title_vi": "Tiêu đề đã dịch sang tiếng Việt",
-      "summary_vi": "• 📌 Cốt lõi: ...\n• 🔍 Chi tiết: ...\n• 💡 Đáng chú ý: ..."
+      "title_vi": "[🔥 NHÃN] Tiêu đề đã dịch sang tiếng Việt",
+      "summary_vi": "• 📌 Cốt lõi: ...\n• 🔍 Chi tiết: ...\n• 🗣️ Góc nhìn & Tranh luận: ..."
     }
+  ]
+}"""
+
+LEARNING_SYSTEM_INSTRUCTION = """Bạn là người cố vấn công nghệ và ngôn ngữ buổi sáng của "Morning Pulse".
+Dựa trên danh sách các tiêu đề tin tức Công nghệ & Bóng đá sáng nay, hãy tạo góc "Mỗi Sáng 1 Kiến Thức Đắt Giá & 3 Từ Vựng Chuyên Ngành" giúp người đọc vừa cập nhật tin tức vừa giỏi lên mỗi ngày trong 15 giây.
+
+Trả về một JSON hợp lệ theo đúng cấu trúc sau:
+{
+  "concept_of_the_day": "Chọn 1 khái niệm Kỹ thuật / System Design / Kiến trúc AI xuất hiện hoặc liên quan mật thiết tới tin tức sáng nay. Trình bày ngắn gọn 3-4 câu: Tên khái niệm (in đậm) -> Giải thích nguyên lý cực kỳ dễ hiểu bằng ví dụ thực tế -> Tại sao lập trình viên nên biết điều này.",
+  "daily_vocab": [
+    "🇬🇧 **Thuật ngữ 1 (Tech/Engineering)** *(loại từ)*: Nghĩa tiếng Việt ngắn gọn — *Ví dụ câu ngắn gắn với ngữ cảnh công nghệ.*",
+    "🇬🇧 **Thuật ngữ 2 (AI/Software)** *(loại từ)*: Nghĩa tiếng Việt ngắn gọn — *Ví dụ câu ngắn gắn với ngữ cảnh lập trình.*",
+    "🇬🇧 **Thuật ngữ 3 (Football/Sports Idiom)** *(loại từ)*: Nghĩa tiếng Việt ngắn gọn — *Ví dụ câu ngắn gắn với ngữ cảnh bóng đá quốc tế.*"
   ]
 }"""
 
@@ -100,15 +113,15 @@ def _summarize_section_gemini(
             "index": idx,
             "title": item.title,
             "source": item.source,
-            "raw_content": item.summary[:950],
+            "raw_content_and_comments": item.summary[:1050],
             "score": item.score or "",
         }
         for idx, item in enumerate(sec.items)
     ]
     user_prompt = (
         f"Chuyên mục: {sec.title} (key: {sec.key})\n"
-        "Hãy dịch toàn bộ tiêu đề sang tiếng Việt (`title_vi`) và viết bản tóm tắt chuyên sâu chia làm 3 ý "
-        "(`• 📌 Cốt lõi:`, `• 🔍 Chi tiết:`, `• 💡 Đáng chú ý:`) trong `summary_vi` cho từng mục theo đúng thứ tự index:\n"
+        "Hãy gắn nhãn độ nóng + dịch tiêu đề sang tiếng Việt (`title_vi`) và viết bản tóm tắt chuyên sâu 3 ý "
+        "(`• 📌 Cốt lõi:`, `• 🔍 Chi tiết:`, `• 🗣️ Góc nhìn & Tranh luận:`) trong `summary_vi` cho từng mục theo đúng thứ tự index:\n"
         f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
     )
     res = _call_gemini_json(
@@ -131,10 +144,38 @@ def _summarize_section_gemini(
                 item.summary = summary_vi
 
 
+def _generate_daily_learning(
+    sections: List[DigestSection],
+    api_key: str,
+    models: List[str],
+    temperature: float,
+) -> tuple[str, List[str]]:
+    headlines = [
+        f"[{sec.title}] {it.title}: {it.summary[:180]}"
+        for sec in sections
+        for it in sec.items[:2]
+    ]
+    user_prompt = (
+        "Dưới đây là các chủ đề tin tức nổi bật sáng nay:\n"
+        + "\n".join(headlines)
+        + "\n\nHãy tạo 1 Kiến thức kỹ thuật đắt giá trong ngày (`concept_of_the_day`) và 3 Từ vựng tiếng Anh chuyên ngành (`daily_vocab`) theo đúng JSON mẫu."
+    )
+    res = _call_gemini_json(
+        api_key=api_key,
+        models=models,
+        temperature=temperature,
+        system_prompt=LEARNING_SYSTEM_INSTRUCTION,
+        user_prompt=user_prompt,
+    )
+    concept = str(res.get("concept_of_the_day", "")).strip()
+    vocab = [str(v).strip() for v in (res.get("daily_vocab") or []) if str(v).strip()]
+    return concept, vocab
+
+
 def build_morning_digest(
     raw_items: List[NewsItem], cfg: Dict[str, Any], date_obj: datetime | None = None
 ) -> MorningDigest:
-    """Phân nhóm tin tức, dịch sang tiếng Việt và tóm tắt chuyên sâu từng chuyên mục bằng AI."""
+    """Phân nhóm tin tức, dịch sang tiếng Việt, gắn nhãn độ nóng, tóm tắt comment và tạo góc Micro-Learning."""
     now = date_obj or datetime.now()
     date_str = now.strftime("%Y-%m-%d")
     display_date = now.strftime("%d/%m/%Y")
@@ -166,6 +207,9 @@ def build_morning_digest(
     temperature = float(ai_cfg.get("temperature", 0.35))
 
     overview_lines: List[str] = []
+    concept_of_the_day = ""
+    daily_vocab: List[str] = []
+
     if ai_enabled and sections and provider == "gemini" and secrets.get("gemini_api_key"):
         primary = ai_cfg.get("gemini_model", "gemini-3-flash-preview")
         fallbacks = ai_cfg.get(
@@ -176,7 +220,7 @@ def build_morning_digest(
 
         for sec in sections:
             try:
-                logger.info("🧠 Đang dịch & tóm tắt chuyên sâu mục [%s %s] bằng Gemini 3...", sec.emoji, sec.title)
+                logger.info("🧠 Đang dịch, gắn nhãn & tóm tắt comment mục [%s %s] bằng Gemini 3...", sec.emoji, sec.title)
                 _summarize_section_gemini(
                     sec=sec,
                     api_key=secrets["gemini_api_key"],
@@ -189,11 +233,22 @@ def build_morning_digest(
             except Exception as exc:
                 logger.warning("Không thể tóm tắt mục %s bằng AI: %s", sec.title, exc)
 
+        try:
+            logger.info("💡 Đang tạo góc 'Mỗi Sáng 1 Kiến Thức Đắt Giá & 3 Từ Vựng Chuyên Ngành'...")
+            concept_of_the_day, daily_vocab = _generate_daily_learning(
+                sections=sections,
+                api_key=secrets["gemini_api_key"],
+                models=models,
+                temperature=temperature,
+            )
+        except Exception as exc:
+            logger.warning("Không thể tạo góc Micro-Learning: %s", exc)
+
     overview = "\n\n".join(overview_lines) if overview_lines else default_overview
 
-    # Tự động trích xuất "Top 3 Tin Không Thể Bỏ Lỡ" (1 OpenSource/HN, 1 Tech/Reddit, 1 Bóng đá) để đọc lướt 30 giây
+    # Tự động trích xuất "Top 3 Tin Không Thể Bỏ Lỡ" để đọc lướt 30 giây
     top_highlights: List[str] = []
-    priority_Order = [
+    priority_order = [
         ("github", "🚀 Mã nguồn mở"),
         ("tech_news", "📰 Công nghệ"),
         ("football", "⚽ Bóng đá"),
@@ -201,7 +256,7 @@ def build_morning_digest(
         ("reddit", "👽 Reddit"),
     ]
     sec_by_key = {s.key: s for s in sections}
-    for key, label in priority_Order:
+    for key, label in priority_order:
         sec = sec_by_key.get(key)
         if sec and sec.items:
             top_item = sec.items[0]
@@ -219,4 +274,6 @@ def build_morning_digest(
         ai_overview=overview,
         sections=sections,
         top_highlights=top_highlights,
+        concept_of_the_day=concept_of_the_day,
+        daily_vocab=daily_vocab,
     )

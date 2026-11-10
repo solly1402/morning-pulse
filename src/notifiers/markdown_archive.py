@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 def _format_md_summary(summary: str) -> str:
     formatted = re.sub(
-        r"(•\s*📌\s*Cốt lõi:|•\s*🔍\s*Chi tiết:|•\s*💡\s*Đáng chú ý:)",
+        r"(•\s*📌\s*Cốt lõi:|•\s*🔍\s*Chi tiết:|•\s*🗣️\s*Góc nhìn & Tranh luận:|•\s*💡\s*Đáng chú ý:)",
         r"**\1**",
         summary,
     )
@@ -27,10 +27,12 @@ def render_digest_markdown(digest: MorningDigest) -> str:
         "",
     ]
 
-    if digest.weather_summary or digest.football_fixtures:
-        lines.extend(["## 🌤️ Trợ Lý Đầu Ngày", ""])
+    if digest.weather_summary or digest.market_ticker or digest.football_fixtures:
+        lines.extend(["## 🌤️ Trợ Lý Đầu Ngày & Nhịp Đập Thị Trường", ""])
         if digest.weather_summary:
             lines.extend([digest.weather_summary, ""])
+        if digest.market_ticker:
+            lines.extend(["### 💰 Nhịp Đập Thị Trường", "", digest.market_ticker, ""])
         if digest.football_fixtures:
             lines.extend(["### ⚽ Lịch & Kết quả các trận cầu tâm điểm", "", digest.football_fixtures, ""])
         lines.extend(["---", ""])
@@ -80,6 +82,17 @@ def render_digest_markdown(digest: MorningDigest) -> str:
 
         lines.append("---")
         lines.append("")
+
+    if digest.concept_of_the_day or digest.daily_vocab:
+        lines.extend(["## 🧠 Góc Nâng Tầm Mỗi Sáng", ""])
+        if digest.concept_of_the_day:
+            lines.extend(["### 💡 Mỗi Sáng 1 Kiến Thức Đắt Giá", "", f"> {digest.concept_of_the_day}", ""])
+        if digest.daily_vocab:
+            lines.extend(["### 🇬🇧 3 Thuật Ngữ Tiếng Anh Chuyên Ngành", ""])
+            for v in digest.daily_vocab:
+                lines.append(f"- {v}")
+            lines.append("")
+        lines.extend(["---", ""])
 
     lines.append("*Bản tin được tạo tự động bởi **Morning Pulse**.*")
     return "\n".join(lines)

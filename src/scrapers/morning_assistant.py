@@ -50,9 +50,9 @@ def fetch_weather_summary(cities: List[Dict[str, Any]] | None = None) -> str:
     max_rain_prob = 0
 
     for city in target_cities:
-        name = city.get("name", "TP.HCM")
-        lat = city.get("lat", 10.8231)
-        lon = city.get("lon", 106.6297)
+        name = city.get("name", "Biên Hoà, Đồng Nai")
+        lat = city.get("lat", 10.9447)
+        lon = city.get("lon", 106.8243)
         url = (
             f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
             "&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max"
@@ -87,6 +87,53 @@ def fetch_weather_summary(cities: List[Dict[str, Any]] | None = None) -> str:
         lines.append("💡 *Nhắc nhẹ: Thời tiết hôm nay khá thuận lợi cho việc di chuyển và làm việc ngoài trời!*")
 
     return "\n".join(lines)
+
+
+def fetch_market_ticker() -> str:
+    """Lấy nhanh tỷ giá USD/VND, Giá Vàng Thế Giới (XAU/PAXG) và Bitcoin (BTC), Ethereum (ETH) sáng nay."""
+    parts: List[str] = []
+
+    # 1. Tỷ giá USD/VND
+    try:
+        resp_fx = requests.get("https://open.er-api.com/v6/latest/USD", timeout=8)
+        if resp_fx.status_code == 200:
+            vnd_rate = resp_fx.json().get("rates", {}).get("VND")
+            if vnd_rate:
+                parts.append(f"💵 **USD/VND:** `{int(round(vnd_rate)):,} ₫`")
+    except Exception as exc:
+        logger.debug("Không thể lấy tỷ giá USD/VND: %s", exc)
+
+    # 2. Giá Vàng thế giới (PAXG/USD ~ 1 Oz Vàng), Bitcoin (BTC) & Ethereum (ETH)
+    label_map = {
+        "PAXGUSDT": ("🪙 **Vàng (XAU):**", "$", 0),
+        "BTCUSDT": ("₿ **BTC:**", "$", 0),
+        "ETHUSDT": ("Ξ **ETH:**", "$", 0),
+    }
+    try:
+        resp_crypto = requests.get(
+            "https://api.binance.com/api/v3/ticker/24hr",
+            params={"symbols": '["PAXGUSDT","BTCUSDT","ETHUSDT"]'},
+            timeout=8,
+        )
+        if resp_crypto.status_code == 200:
+            data_map = {item["symbol"]: item for item in resp_crypto.json()}
+            for sym in ("PAXGUSDT", "BTCUSDT", "ETHUSDT"):
+                info = data_map.get(sym)
+                if not info:
+                    continue
+                label, prefix, _ = label_map[sym]
+                price = float(info.get("lastPrice", 0))
+                chg = float(info.get("priceChangePercent", 0))
+                arrow = "📈" if chg >= 0 else "📉"
+                sign = "+" if chg >= 0 else ""
+                unit = "/oz" if sym == "PAXGUSDT" else ""
+                parts.append(f"{label} `{prefix}{int(round(price)):,}{unit}` ({arrow} `{sign}{chg:.1f}%`)")
+    except Exception as exc:
+        logger.debug("Không thể lấy dữ liệu thị trường: %s", exc)
+
+    if not parts:
+        return ""
+    return "• " + "  |  ".join(parts)
 
 
 def fetch_upcoming_football_matches(max_matches: int = 6) -> str:

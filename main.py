@@ -14,6 +14,7 @@ from src.scrapers.dedup import filter_and_record_seen_items
 from src.scrapers.github_trending import fetch_github_trending
 from src.scrapers.hackernews import fetch_hacker_news
 from src.scrapers.morning_assistant import (
+    fetch_market_ticker,
     fetch_upcoming_football_matches,
     fetch_weather_summary,
 )
@@ -101,9 +102,10 @@ def main() -> int:
     # Tổng hợp & dịch/biên tập bằng Gemini 3
     digest = build_morning_digest(items, cfg, date_obj=now_vn)
 
-    # Bổ sung Góc Trợ Lý Đầu Ngày: Thời tiết & Lịch thi đấu bóng đá tâm điểm
-    logger.info("🌤️ Đang lấy thông tin thời tiết & lịch thi đấu bóng đá hôm nay...")
+    # Bổ sung Góc Trợ Lý Đầu Ngày: Thời tiết, Tỷ giá thị trường & Lịch thi đấu bóng đá tâm điểm
+    logger.info("🌤️ Đang lấy thông tin thời tiết, tỷ giá thị trường & lịch thi đấu bóng đá hôm nay...")
     digest.weather_summary = fetch_weather_summary()
+    digest.market_ticker = fetch_market_ticker()
     digest.football_fixtures = fetch_upcoming_football_matches()
 
     outputs_cfg = cfg.get("outputs", {})

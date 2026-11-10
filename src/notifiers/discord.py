@@ -1,8 +1,7 @@
-import json
 import logging
 import re
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 import requests
 
@@ -27,7 +26,7 @@ def _format_summary_quote(summary: str) -> str:
     if not summary:
         return ""
     formatted = re.sub(
-        r"(•\s*📌\s*Cốt lõi:|•\s*🔍\s*Chi tiết:|•\s*💡\s*Đáng chú ý:)",
+        r"(•\s*📌\s*Cốt lõi:|•\s*🔍\s*Chi tiết:|•\s*🗣️\s*Góc nhìn & Tranh luận:|•\s*💡\s*Đáng chú ý:)",
         r"**\1**",
         summary,
     )
@@ -59,26 +58,23 @@ def _format_item_block(idx: int, item: NewsItem) -> str:
 
 
 def _build_section_embeds(sec: DigestSection, date_str: str) -> List[Dict[str, Any]]:
-    """Chia một chuyên mục thành nhiều thẻ Embed nhỏ (tối đa 3 tin/thẻ) để KHÔNG BAO GIỜ bị cắt chữ."""
-    item_blocks: List[str] = [
-        _format_item_block(idx, item) for idx, item in enumerate(sec.items, 1)
-    ]
-
-    pages: List[List[str]] = []
-    current_page: List[str] = []
+    """Chia một chuyên mục thành nhiều thẻ Embed nhỏ (tối đa 3 tin/thẻ) kèm ảnh minh họa (og:image) và không cắt chữ."""
+    pages: List[List[Tuple[str, NewsItem]]] = []
+    current_page: List[Tuple[str, NewsItem]] = []
     current_len = len(sec.ai_commentary) + 50
 
-    for block in item_blocks:
+    for idx, item in enumerate(sec.items, 1):
+        block = _format_item_block(idx, item)
         sep_len = len(DIVIDER) + 4 if current_page else 0
         if current_page and (
             len(current_page) >= MAX_ITEMS_PER_CARD
             or current_len + sep_len + len(block) > MAX_CARD_CHARS
         ):
             pages.append(current_page)
-            current_page = [block]
+            current_page = [(block, item)]
             current_len = len(block)
         else:
-            current_page.append(block)
+            current_page.append((block, item))
             current_len += sep_len + len(block)
 
     if current_page:
@@ -87,27 +83,37 @@ def _build_section_embeds(sec: DigestSection, date_str: str) -> List[Dict[str, A
     total_pages = len(pages)
     embeds: List[Dict[str, Any]] = []
 
-    for page_idx, page_blocks in enumerate(pages, 1):
+    for page_idx, page_entries in enumerate(pages, 1):
         desc_parts: List[str] = []
         if page_idx == 1 and sec.ai_commentary:
             desc_parts.append(f"💡 ***Góc nhìn AI:** {sec.ai_commentary}*")
             desc_parts.append(DIVIDER)
 
+        page_blocks = [b for b, _ in page_entries]
         desc_parts.append(f"\n\n{DIVIDER}\n\n".join(page_blocks))
         description = "\n\n".join(desc_parts)
 
+        # Chọn ảnh minh họa (og:image) đầu tiên hợp lệ trong thẻ này để làm ảnh bìa tạp chí
+        card_image = ""
+        for _, it in page_entries:
+            if it.image_url and it.image_url.startswith("https://"):
+                card_image = it.image_url
+                break
+
         page_suffix = f" ({page_idx}/{total_pages})" if total_pages > 1 else ""
-        embeds.append(
-            {
-                "title": f"{sec.emoji} {sec.title.upper()}{page_suffix}",
-                "description": description,
-                "color": sec.color,
-                "footer": {
-                    "text": f"☕ Morning Pulse • {sec.title}{page_suffix} • {date_str}"
-                },
-                "_section_key": sec.key if page_idx == 1 else "",
-            }
-        )
+        embed_obj: Dict[str, Any] = {
+            "title": f"{sec.emoji} {sec.title.upper()}{page_suffix}",
+            "description": description,
+            "color": sec.color,
+            "footer": {
+                "text": f"☕ Morning Pulse • {sec.title}{page_suffix} • {date_str}"
+            },
+            "_section_key": sec.key if page_idx == 1 else "",
+        }
+        if card_image:
+            embed_obj["image"] = {"url": card_image}
+
+        embeds.append(embed_obj)
 
     return embeds
 
@@ -115,19 +121,21 @@ def _build_section_embeds(sec: DigestSection, date_str: str) -> List[Dict[str, A
 def _build_overview_embed(
     digest: MorningDigest, toc_links: List[str] | None = None
 ) -> Dict[str, Any]:
-    """Tạo thẻ Embed mở đầu (Hero Card) chứa Thời tiết, Lịch bóng đá, Top 3 Đọc lướt 30s & Mục lục nhảy nhanh."""
+    """Tạo thẻ Embed mở đầu (Hero Card) chứa Thời tiết, Tỷ giá thị trường, Lịch bóng đá, Top 3 & Mục lục nhảy nhanh."""
     parts: List[str] = [digest.greeting]
 
     if toc_links:
         parts.append("### 🧭 MỤC LỤC NHẢY NHANH (Bấm để cuộn tới chuyên mục)\n" + "  •  ".join(toc_links))
 
-    if digest.weather_summary or digest.football_fixtures:
-        assistant_lines: List[str] = ["### 🌤️ TRỢ LÝ ĐẦU NGÀY"]
+    if digest.weather_summary or digest.market_ticker or digest.football_fixtures:
+        assistant_lines: List[str] = ["### 🌤️ TRỢ LÝ ĐẦU NGÀY & NHỊP ĐẬP THỊ TRƯỜNG"]
         if digest.weather_summary:
             assistant_lines.append(digest.weather_summary)
+        if digest.market_ticker:
+            assistant_lines.append("**💰 Nhịp đập thị trường sáng nay:**\n" + digest.market_ticker)
         if digest.football_fixtures:
             assistant_lines.append("**⚽ Lịch & Kết quả các trận cầu tâm điểm:**\n" + digest.football_fixtures)
-        parts.append("\n".join(assistant_lines))
+        parts.append("\n\n".join(assistant_lines))
 
     if digest.top_highlights:
         hl_lines = ["### 🏆 ĐỌC LƯỚT 30 GIÂY — TOP 3 TIN KHÔNG THỂ BỎ LỠ"]
@@ -146,6 +154,29 @@ def _build_overview_embed(
         "description": desc,
         "color": 0xF59E0B,
         "footer": {"text": f"🌅 Điểm bắt đầu bản tin ngày {digest.date_str}"},
+    }
+
+
+def _build_learning_embed(digest: MorningDigest) -> Dict[str, Any] | None:
+    """Tạo thẻ 'Mỗi Sáng 1 Kiến Thức Đắt Giá & 3 Từ Vựng Chuyên Ngành'."""
+    if not digest.concept_of_the_day and not digest.daily_vocab:
+        return None
+
+    parts: List[str] = []
+    if digest.concept_of_the_day:
+        parts.append(f"### 💡 MỖI SÁNG 1 KIẾN THỨC ĐẮT GIÁ\n> {digest.concept_of_the_day}")
+
+    if digest.daily_vocab:
+        vocab_lines = ["### 🇬🇧 3 THUẬT NGỮ TIẾNG ANH CHUYÊN NGÀNH TRONG NGÀY"]
+        for v in digest.daily_vocab:
+            vocab_lines.append(f"> • {v}")
+        parts.append("\n".join(vocab_lines))
+
+    return {
+        "title": f"🧠 GÓC NÂNG TẦM MỖI SÁNG ({digest.date_str})",
+        "description": f"\n\n{DIVIDER}\n\n".join(parts),
+        "color": 0xEC4899,  # Màu hồng tím nổi bật cho góc học tập mỗi sáng
+        "footer": {"text": f"🚀 Mỗi ngày giỏi hơn 1% cùng Morning Pulse • {digest.date_str}"},
     }
 
 
@@ -195,7 +226,7 @@ def _build_closing_divider_payload(
 
 
 def send_discord_digest(digest: MorningDigest, webhook_url: str) -> bool:
-    """Gửi bản tin buổi sáng qua Discord kèm Audio MP3, Mục lục nhảy nhanh và Vạch phân chia cuối ngày."""
+    """Gửi bản tin buổi sáng qua Discord kèm Ảnh bìa, Nhịp đập thị trường, Góc học tập và Mục lục nhảy nhanh."""
     if not webhook_url:
         logger.info("Bỏ qua Discord: Chưa cấu hình DISCORD_WEBHOOK_URL.")
         return False
@@ -235,11 +266,10 @@ def send_discord_digest(digest: MorningDigest, webhook_url: str) -> bool:
         logger.error("Lỗi khi gửi thẻ mở đầu Discord: %s", exc)
         success = False
 
-    # 2. Gửi lần lượt từng chuyên mục và ghi nhận link nhảy tới đầu mỗi chuyên mục
+    # 2. Gửi lần lượt từng chuyên mục (kèm ảnh minh họa) và ghi nhận link nhảy tới đầu mỗi chuyên mục
     sec_meta_map = {s.key: (s.emoji, s.title) for s in digest.sections}
     for sec in digest.sections:
         sec_embeds = _build_section_embeds(sec, digest.date_str)
-        # Chia mỗi lần gửi tối đa 2 thẻ của cùng 1 chuyên mục để dưới 4800 ký tự
         for i in range(0, len(sec_embeds), 2):
             chunk = sec_embeds[i : i + 2]
             clean_chunk = [{k: v for k, v in emb.items() if not k.startswith("_")} for emb in chunk]
@@ -261,7 +291,26 @@ def send_discord_digest(digest: MorningDigest, webhook_url: str) -> bool:
                 logger.error("Lỗi khi gửi chuyên mục %s lên Discord: %s", sec.title, exc)
                 success = False
 
-    # 3. Cập nhật (PATCH) lại thẻ Mở đầu để gắn thanh Mục Lục Nhảy Nhanh (Table of Contents)
+    # 3. Gửi thẻ "🧠 Góc Nâng Tầm Mỗi Sáng (1 Kiến Thức + 3 Từ Vựng)"
+    learning_embed = _build_learning_embed(digest)
+    if learning_embed:
+        try:
+            resp = requests.post(
+                f"{webhook_url}?wait=true",
+                json={"username": "Morning Pulse ☕", "embeds": [learning_embed]},
+                timeout=25,
+            )
+            resp.raise_for_status()
+            if guild_id and channel_id:
+                learn_id = resp.json().get("id")
+                if learn_id:
+                    learn_url = f"https://discord.com/channels/{guild_id}/{channel_id}/{learn_id}"
+                    section_jump_links.append(f"[🧠 Góc Học Tập]({learn_url})")
+            time.sleep(0.6)
+        except Exception as exc:
+            logger.warning("Không thể gửi thẻ Góc Nâng Tầm lên Discord: %s", exc)
+
+    # 4. Cập nhật (PATCH) lại thẻ Mở đầu để gắn thanh Mục Lục Nhảy Nhanh (Table of Contents)
     if first_msg_id and section_jump_links:
         try:
             updated_overview = _build_overview_embed(digest, toc_links=section_jump_links)
@@ -273,7 +322,7 @@ def send_discord_digest(digest: MorningDigest, webhook_url: str) -> bool:
         except Exception as exc:
             logger.debug("Không thể cập nhật Mục lục vào thẻ mở đầu Discord: %s", exc)
 
-    # 4. Gửi vạch phân chia kết thúc bản tin trong ngày ở tin nhắn cuối cùng
+    # 5. Gửi vạch phân chia kết thúc bản tin trong ngày ở tin nhắn cuối cùng
     try:
         closing_payload = _build_closing_divider_payload(
             digest, jump_url=jump_url, toc_links=section_jump_links
@@ -285,5 +334,5 @@ def send_discord_digest(digest: MorningDigest, webhook_url: str) -> bool:
         success = False
 
     if success:
-        logger.info("Đã gửi thành công bản tin + Audio MP3 + Mục lục nhảy nhanh qua Discord Webhook.")
+        logger.info("Đã gửi thành công bản tin tạp chí có hình ảnh + Góc học tập + Mục lục qua Discord.")
     return success
