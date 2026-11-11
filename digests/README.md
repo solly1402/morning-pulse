@@ -2,4 +2,5 @@
 
 Danh sách các bản tin buổi sáng được tổng hợp tự động theo từng ngày:
 
+- 📅 **[2026-11-11](./2026-11-11.md)**
 - 📅 **[2026-11-10](./2026-11-10.md)**
