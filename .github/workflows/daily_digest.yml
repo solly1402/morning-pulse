@@ -1,16 +1,23 @@
 name: ☕ Morning Pulse Daily Digest
 
 on:
+  # 🎯 NGUỒN KÍCH HOẠT CHÍNH: cron-job.org gọi API workflow_dispatch đúng 05:45 sáng giờ VN
+  #    (gửi kèm input trigger_source=cronjob). Chạy thử bằng tay trên GitHub thì để mặc định "manual".
+  workflow_dispatch:
+    inputs:
+      trigger_source:
+        description: "Nguồn kích hoạt (cronjob = lịch hằng ngày, manual = chạy thử ngay)"
+        required: false
+        default: "manual"
+        type: choice
+        options:
+          - manual
+          - cronjob
+
+  # 🛟 LƯỚI AN TOÀN: phòng khi cron-job.org gặp sự cố, GitHub sẽ tự chạy bù.
+  #    (Cron của GitHub có thể trễ 1-4 tiếng nên chỉ dùng làm dự phòng.)
   schedule:
-    # Cron của GitHub Actions thường bị TRỄ 1-4 TIẾNG vào giờ cao điểm.
-    # Vì vậy ta đặt nhiều mốc "đánh thức" sớm (02:50, 03:50, 04:50, 05:35 giờ VN).
-    # Lượt nào chạy sớm sẽ tự NGỦ CHỜ đến đúng 05:45 rồi mới gửi bản tin.
-    # Các lượt đến sau sẽ thấy hôm nay đã gửi rồi và tự bỏ qua (không gửi trùng).
-    - cron: "50 19 * * *" # 02:50 VN
-    - cron: "50 20 * * *" # 03:50 VN
-    - cron: "50 21 * * *" # 04:50 VN
-    - cron: "35 22 * * *" # 05:35 VN (lưới an toàn cuối cùng)
-  workflow_dispatch: # Bấm "Run workflow" để chạy thử ngay lập tức (bỏ qua bước chờ giờ)
+    - cron: "30 23 * * *" # 06:30 VN
 
 permissions:
   contents: write # Cấp quyền để GitHub Actions tự động commit file Daily Digest vào repo
@@ -20,14 +27,10 @@ concurrency:
   group: morning-pulse-daily
   cancel-in-progress: false
 
-env:
-  TARGET_HOUR_VN: "05"
-  TARGET_MINUTE_VN: "45"
-
 jobs:
   send-morning-digest:
     runs-on: ubuntu-latest
-    timeout-minutes: 300
+    timeout-minutes: 30
 
     steps:
       - name: 📥 Checkout repository (bản mới nhất của nhánh main)
@@ -40,25 +43,16 @@ jobs:
         run: |
           TODAY_VN=$(TZ=Asia/Ho_Chi_Minh date +%Y-%m-%d)
           LAST_SENT=$(cat digests/.last_sent 2>/dev/null || echo "none")
-          echo "Hôm nay (VN): $TODAY_VN | Lần gửi gần nhất: $LAST_SENT"
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "$LAST_SENT" = "$TODAY_VN" ]; then
+          SOURCE="${{ github.event_name }}/${{ inputs.trigger_source || 'none' }}"
+          echo "Nguồn kích hoạt: $SOURCE | Hôm nay (VN): $TODAY_VN | Lần gửi gần nhất: $LAST_SENT"
+          if [ "${{ inputs.trigger_source }}" = "manual" ]; then
+            echo "🧪 Chạy thử bằng tay -> luôn gửi."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          elif [ "$LAST_SENT" = "$TODAY_VN" ]; then
             echo "✅ Bản tin hôm nay đã được gửi rồi, bỏ qua lượt chạy này."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: ⏳ Chờ đến đúng 05:45 sáng giờ Việt Nam
-        if: steps.guard.outputs.skip == 'false' && github.event_name == 'schedule'
-        run: |
-          NOW=$(date +%s)
-          TARGET=$(TZ=Asia/Ho_Chi_Minh date -d "today ${TARGET_HOUR_VN}:${TARGET_MINUTE_VN}" +%s)
-          WAIT=$((TARGET - NOW))
-          if [ "$WAIT" -gt 0 ]; then
-            echo "😴 Còn $((WAIT / 60)) phút nữa mới tới ${TARGET_HOUR_VN}:${TARGET_MINUTE_VN}, đang ngủ chờ..."
-            sleep "$WAIT"
-          else
-            echo "⚡ Đã quá ${TARGET_HOUR_VN}:${TARGET_MINUTE_VN} (GitHub đánh thức trễ), gửi bản tin ngay!"
           fi
 
       - name: 🐍 Set up Python 3.12
