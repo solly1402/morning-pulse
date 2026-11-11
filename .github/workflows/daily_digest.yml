@@ -2,33 +2,80 @@ name: ☕ Morning Pulse Daily Digest
 
 on:
   schedule:
-    # Chạy tự động vào 22:45 UTC mỗi ngày = 05:45 sáng giờ Việt Nam (GMT+7)
-    - cron: "45 22 * * *"
-  workflow_dispatch: # Cho phép bấm nút "Run workflow" chạy thử bất cứ lúc nào trên GitHub
+    # Cron của GitHub Actions thường bị TRỄ 1-4 TIẾNG vào giờ cao điểm.
+    # Vì vậy ta đặt nhiều mốc "đánh thức" sớm (02:50, 03:50, 04:50, 05:35 giờ VN).
+    # Lượt nào chạy sớm sẽ tự NGỦ CHỜ đến đúng 05:45 rồi mới gửi bản tin.
+    # Các lượt đến sau sẽ thấy hôm nay đã gửi rồi và tự bỏ qua (không gửi trùng).
+    - cron: "50 19 * * *" # 02:50 VN
+    - cron: "50 20 * * *" # 03:50 VN
+    - cron: "50 21 * * *" # 04:50 VN
+    - cron: "35 22 * * *" # 05:35 VN (lưới an toàn cuối cùng)
+  workflow_dispatch: # Bấm "Run workflow" để chạy thử ngay lập tức (bỏ qua bước chờ giờ)
 
 permissions:
   contents: write # Cấp quyền để GitHub Actions tự động commit file Daily Digest vào repo
 
+# Chỉ cho phép 1 lượt chạy tại một thời điểm, lượt sau xếp hàng chờ lượt trước xong
+concurrency:
+  group: morning-pulse-daily
+  cancel-in-progress: false
+
+env:
+  TARGET_HOUR_VN: "05"
+  TARGET_MINUTE_VN: "45"
+
 jobs:
   send-morning-digest:
     runs-on: ubuntu-latest
+    timeout-minutes: 300
 
     steps:
-      - name: 📥 Checkout repository
+      - name: 📥 Checkout repository (bản mới nhất của nhánh main)
         uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: 🛡️ Kiểm tra hôm nay đã gửi bản tin chưa
+        id: guard
+        run: |
+          TODAY_VN=$(TZ=Asia/Ho_Chi_Minh date +%Y-%m-%d)
+          LAST_SENT=$(cat digests/.last_sent 2>/dev/null || echo "none")
+          echo "Hôm nay (VN): $TODAY_VN | Lần gửi gần nhất: $LAST_SENT"
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$LAST_SENT" = "$TODAY_VN" ]; then
+            echo "✅ Bản tin hôm nay đã được gửi rồi, bỏ qua lượt chạy này."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: ⏳ Chờ đến đúng 05:45 sáng giờ Việt Nam
+        if: steps.guard.outputs.skip == 'false' && github.event_name == 'schedule'
+        run: |
+          NOW=$(date +%s)
+          TARGET=$(TZ=Asia/Ho_Chi_Minh date -d "today ${TARGET_HOUR_VN}:${TARGET_MINUTE_VN}" +%s)
+          WAIT=$((TARGET - NOW))
+          if [ "$WAIT" -gt 0 ]; then
+            echo "😴 Còn $((WAIT / 60)) phút nữa mới tới ${TARGET_HOUR_VN}:${TARGET_MINUTE_VN}, đang ngủ chờ..."
+            sleep "$WAIT"
+          else
+            echo "⚡ Đã quá ${TARGET_HOUR_VN}:${TARGET_MINUTE_VN} (GitHub đánh thức trễ), gửi bản tin ngay!"
+          fi
 
       - name: 🐍 Set up Python 3.12
+        if: steps.guard.outputs.skip == 'false'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
 
       - name: 📦 Install dependencies
+        if: steps.guard.outputs.skip == 'false'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: 🚀 Run Morning Pulse Bot
+        if: steps.guard.outputs.skip == 'false'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -39,14 +86,18 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: python main.py
 
-      - name: 📝 Commit & Push Daily Digest to Repository
+      - name: 📝 Commit & Push Daily Digest + đánh dấu đã gửi
+        if: steps.guard.outputs.skip == 'false'
         run: |
+          TODAY_VN=$(TZ=Asia/Ho_Chi_Minh date +%Y-%m-%d)
+          echo "$TODAY_VN" > digests/.last_sent
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add digests/
           if git diff --staged --quiet; then
             echo "Không có thay đổi mới trong thư mục digests/."
           else
-            git commit -m "📰 docs(digest): cập nhật bản tin sáng $(date -u -d '+7 hours' +'%Y-%m-%d')"
+            git commit -m "📰 docs(digest): cập nhật bản tin sáng $TODAY_VN"
+            git pull --rebase origin main || true
             git push
           fi
